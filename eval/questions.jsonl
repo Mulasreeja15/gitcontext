@@ -1,0 +1,12 @@
+{"question": "How does requests decide whether to follow a redirect?", "expected": ["src/requests/sessions.py::resolve_redirects", "src/requests/sessions.py::get_redirect_target"]}
+{"question": "how are cookies stored", "expected": ["src/requests/cookies.py"]}
+{"question": "where is the timeout handled", "expected": ["src/requests/adapters.py::HTTPAdapter.send"]}
+{"question": "HTTPAdapter", "expected": ["src/requests/adapters.py::HTTPAdapter"]}
+{"question": "resolve_redirects", "expected": ["src/requests/sessions.py::resolve_redirects"]}
+{"question": "where is the Authorization header for basic auth built", "expected": ["src/requests/auth.py::_basic_auth_str", "src/requests/auth.py::HTTPBasicAuth"]}
+{"question": "how are query parameters added to the URL", "expected": ["src/requests/models.py::PreparedRequest.prepare_url", "src/requests/models.py::RequestEncodingMixin._encode_params"]}
+{"question": "how does requests guess the encoding of a response", "expected": ["src/requests/models.py::Response.apparent_encoding", "src/requests/utils.py::get_encoding_from_headers"]}
+{"question": "which exception is raised when there are too many redirects", "expected": ["src/requests/exceptions.py::TooManyRedirects"]}
+{"question": "how are proxy settings taken from environment variables", "expected": ["src/requests/utils.py::get_environ_proxies", "src/requests/sessions.py::merge_environment_settings", "src/requests/utils.py::resolve_proxies"]}
+{"question": "how is a file uploaded as multipart form data", "expected": ["src/requests/models.py::RequestEncodingMixin._encode_files"]}
+{"question": "how are connection retries configured", "expected": ["src/requests/adapters.py::HTTPAdapter.__init__"]}

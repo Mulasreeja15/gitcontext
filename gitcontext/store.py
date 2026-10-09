@@ -1,3 +1,4 @@
+"""Local embeddings (sentence-transformers) + local Qdrant vector store."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,9 +14,11 @@ from .chunker import Chunk
 class Embedder:
     def __init__(self):
         print(f"Loading embedding model {config.EMBED_MODEL} ...")
-        self.model = SentenceTransformer(config.EMBED_MODEL, trust_remote_code=True)
+        self.model = SentenceTransformer(config.EMBED_MODEL)
         self.model.max_seq_length = config.EMBED_MAX_TOKENS
-        self.dim = self.model.get_embedding_dimension()
+        get_dim = (getattr(self.model, "get_embedding_dimension", None)
+                   or self.model.get_sentence_embedding_dimension)
+        self.dim = get_dim()
 
     def encode(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
         vectors = self.model.encode(
@@ -33,7 +36,6 @@ class VectorStore:
         self.client = QdrantClient(path=config.QDRANT_PATH)
 
     def reset(self, dim: int) -> None:
-        """Phase 1 does a full rebuild each time. Phase 4 makes this incremental."""
         if self.client.collection_exists(config.COLLECTION):
             self.client.delete_collection(config.COLLECTION)
         self.client.create_collection(
@@ -49,8 +51,21 @@ class VectorStore:
             ]
             self.client.upsert(config.COLLECTION, points=points)
 
-    def search(self, vector: list[float], k: int = 6) -> list[tuple[float, dict]]:
+    def search(self, vector: list[float], k: int = 6) -> list[tuple[str, float, dict]]:
+        """Returns (id, cosine score, payload) for the k nearest chunks."""
         result = self.client.query_points(
             config.COLLECTION, query=vector, limit=k, with_payload=True
         )
-        return [(p.score, p.payload) for p in result.points]
+        return [(str(p.id), p.score, p.payload) for p in result.points]
+
+    def all_payloads(self) -> list[tuple[str, dict]]:
+        """Every stored chunk. Used to build the BM25 keyword index."""
+        out, offset = [], None
+        while True:
+            points, offset = self.client.scroll(
+                config.COLLECTION, limit=512, offset=offset,
+                with_payload=True, with_vectors=False,
+            )
+            out.extend((str(p.id), p.payload) for p in points)
+            if offset is None:
+                return out

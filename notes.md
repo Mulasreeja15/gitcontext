@@ -15,3 +15,11 @@ Result: rank 1. Success.
 Hit rate in top 6: 3/5 (60%)
 Exact names: 2/2 found. Natural questions: 1/3 found.
 Main problems: tests outrank source code; real logic hidden in big methods.
+
+## Reranker experiment
+- ms-marco-MiniLM-L-6-v2: MRR 0.574, 1.6 s/query
+- bge-reranker-base: MRR 0.503, 9.2 s/query
+- Best without reranker: MRR 0.662, 31 ms/query
+Conclusion: general-purpose rerankers (trained on web search) hurt code retrieval.
+Bigger model = worse and 6x slower, so the problem is domain mismatch, not size.
+Kept as optional --rerank flag, off by default.

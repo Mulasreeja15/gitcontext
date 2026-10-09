@@ -3,3 +3,5 @@ tree-sitter-python>=0.23
 sentence-transformers>=3.0
 qdrant-client>=1.12
 requests>=2.31
+python-dotenv>=1.0
+rank-bm25>=0.2.2

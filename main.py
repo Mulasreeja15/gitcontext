@@ -1,9 +1,14 @@
-"""GitContext CLI (Phase 1).
+"""GitContext CLI.
 
-Usage:
   python main.py index <repo_path_or_git_url>
-  python main.py search "query"
-  python main.py ask "question"
+  python main.py search "query" [options]
+  python main.py ask "question" [options]
+
+Retrieval options:
+  --no-bm25        vector search only (no keyword search)
+  --no-rerank      skip the cross-encoder reranker
+  --include-tests  don't down-rank test files
+  --rewrite        let the LLM rewrite the query first
 """
 from __future__ import annotations
 
@@ -15,6 +20,7 @@ from collections import Counter
 try:
     from gitcontext.answer import generate_answer
     from gitcontext.ingest import collect_chunks, resolve_repo
+    from gitcontext.retriever import RetrievalOptions, Retriever, is_test
     from gitcontext.store import Embedder, VectorStore
 except ImportError as e:
     sys.exit(
@@ -40,35 +46,56 @@ def cmd_index(args):
     print(f"Done. Embedded + stored in {time.time() - t0:.1f}s")
 
 
-def retrieve(query: str, k: int):
-    embedder = Embedder()
-    store = VectorStore()
-    t0 = time.perf_counter()  # measure retrieval only, not model loading
-    hits = store.search(embedder.encode([query])[0], k)
-    return hits, (time.perf_counter() - t0) * 1000
+def options_from(args) -> RetrievalOptions:
+    return RetrievalOptions(
+        bm25=not args.no_bm25,
+        rerank=args.rerank,
+        penalize_tests=not args.include_tests,
+        rewrite=args.rewrite,
+    )
 
 
-def print_hits(hits):
-    for i, (score, p) in enumerate(hits, 1):
+def run_retrieval(query: str, args):
+    opts = options_from(args)
+    retriever = Retriever()
+    retriever.prepare(opts)
+    return retriever.retrieve(query, args.k, opts), opts
+
+
+def print_result(result, opts):
+    print(f"\nMode: {opts.describe()}")
+    if result.rewritten_query:
+        print(f"Rewritten query: {result.rewritten_query}")
+    for i, (score, p) in enumerate(result.hits, 1):
+        tag = "  [test]" if is_test(p) else ""
         print(
-            f"[{i}] {score:.3f}  {p['file_path']}:{p['start_line']}-{p['end_line']}  "
-            f"({p['kind']}: {p['name']})"
+            f"[{i}] {score:8.4f}  {p['file_path']}:{p['start_line']}-{p['end_line']}  "
+            f"({p['kind']}: {p['name']}){tag}"
         )
+    parts = [f"{name.replace('_ms', '')} {ms:.0f} ms" for name, ms in result.timings.items()]
+    print("\nLatency: " + ", ".join(parts))
 
 
 def cmd_search(args):
-    hits, ms = retrieve(args.query, args.k)
-    print_hits(hits)
-    print(f"\nRetrieval latency: {ms:.0f} ms")
+    result, opts = run_retrieval(args.query, args)
+    print_result(result, opts)
 
 
 def cmd_ask(args):
-    hits, ms = retrieve(args.question, args.k)
+    result, opts = run_retrieval(args.question, args)
     print("\nThinking ...\n")
-    print(generate_answer(args.question, hits))
+    print(generate_answer(args.question, result.hits))
     print("\nSources:")
-    print_hits(hits)
-    print(f"\nRetrieval latency: {ms:.0f} ms")
+    print_result(result, opts)
+
+
+def add_retrieval_flags(p):
+    p.add_argument("-k", type=int, default=6, help="number of results")
+    p.add_argument("--no-bm25", action="store_true", help="vector search only")
+    p.add_argument("--no-rerank", action="store_true", help="skip the reranker")
+    p.add_argument("--include-tests", action="store_true", help="don't down-rank tests")
+    p.add_argument("--rerank", action="store_true", help="use the cross-encoder reranker")
+    
 
 
 def main():
@@ -81,12 +108,12 @@ def main():
 
     p = sub.add_parser("search", help="show retrieved chunks only")
     p.add_argument("query")
-    p.add_argument("-k", type=int, default=6)
+    add_retrieval_flags(p)
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("ask", help="answer a question with citations")
     p.add_argument("question")
-    p.add_argument("-k", type=int, default=6)
+    add_retrieval_flags(p)
     p.set_defaults(func=cmd_ask)
 
     args = parser.parse_args()

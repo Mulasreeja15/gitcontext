@@ -10,11 +10,21 @@ REPOS_DIR = DATA_DIR / "repos"          # cloned repos land here
 QDRANT_PATH = str(DATA_DIR / "qdrant")  # local Qdrant, no Docker needed
 COLLECTION = "gitcontext"
 
-# Free, local embedding model (max 512 tokens)
+# Embeddings (local, free)
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 EMBED_MAX_TOKENS = 512
 
-# LLM that writes the answers (Groq, free tier)
+# Reranker (local, free): a cross-encoder that reads query + code together
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+RERANK_MAX_TOKENS = 512
+
+# Retrieval tuning
+CANDIDATES = 30              # results each retriever contributes before fusion/reranking
+RRF_K = 60                   # standard Reciprocal Rank Fusion constant
+TEST_RRF_WEIGHT = 0.5        # test files count half during fusion
+TEST_RERANK_PENALTY = 3.0    # subtracted from the reranker score for test files
+
+# LLM that writes answers and rewrites queries (Groq, free tier)
 LLM_URL = "https://api.groq.com/openai/v1/chat/completions"
 LLM_MODEL = "openai/gpt-oss-120b"
 LLM_KEY_NAME = "GROQ_API_KEY"
