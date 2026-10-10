@@ -170,7 +170,7 @@ def stream_answer(question: str, hits: list[tuple[float, dict]], on_retry=None) 
 
 
 @lru_cache(maxsize=1024)
-def rewrite_query(question: str) -> str:
+def rewrite_query(question: str, repo: str = config.DEFAULT_REPO) -> str:
     out = _chat(
         [{"role": "system", "content": REWRITE_PROMPT}, {"role": "user", "content": question}],
         temperature=0.0,

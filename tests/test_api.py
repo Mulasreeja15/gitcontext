@@ -15,7 +15,7 @@ from gitcontext import answer
 def service(helper_modules, tmp_path, monkeypatch):
     """Use real HTTP routing with a single mocked persistent retriever."""
     api = importlib.import_module('gitcontext.api')
-    monkeypatch.setattr(api.config, 'INDEX_STATE_PATH', tmp_path / 'index_state.json')
+    monkeypatch.setattr(api.config, 'INDEX_STATE_DIR', tmp_path / 'index_state')
     payload = {'file_path': 'tests/test_x.py', 'start_line': 2, 'end_line': 5,
                'kind': 'function', 'name': 'test_x', 'language': 'python', 'text': 'def test_x(): pass'}
     retriever = Mock()
@@ -155,7 +155,9 @@ def test_home_serves_self_contained_html(service):
 def test_health_repo_name_from_index_metadata(service):
     client, _, _ = service
     from gitcontext import config
-    config.INDEX_STATE_PATH.write_text(json.dumps({'repo_name': 'requests', 'repo_path': 'missing-repo',
+    from gitcontext.repositories import state_path
+    state_path().parent.mkdir(parents=True, exist_ok=True)
+    state_path().write_text(json.dumps({'repo_id': config.DEFAULT_REPO, 'repo_name': 'requests', 'repo_path': 'missing-repo',
         'remote_url': None, 'indexed_commit': None, 'timestamp': 'now',
         'chunk_count': 10, 'embed_model': config.EMBED_MODEL}), encoding='utf-8')
     assert client.get('/health').json()['repo_name'] == 'requests'

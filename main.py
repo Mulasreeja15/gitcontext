@@ -38,13 +38,13 @@ def cmd_index(args):
 def cmd_update(args):
     """Re-embed only supported files changed since the indexed commit."""
     from gitcontext.indexing import update_index, print_summary
-    print_summary(update_index(args.repo))
+    print_summary(update_index(args.source, repo=args.repo))
 
 
 def cmd_status(args):
     """Report freshness against local HEAD without taking a Qdrant lock."""
     from gitcontext.indexing import index_status
-    status = index_status()
+    status = index_status(args.repo)
     print(f"Indexed commit: {status['indexed_commit'] or 'not indexed'}")
     print(f"Current HEAD: {status['current_head'] or 'unknown'}")
     print(f"Stale: {'yes' if status['stale'] else 'no'}; commits behind: {status['commits_behind']}; "
@@ -64,7 +64,7 @@ def options_from(args) -> RetrievalOptions:
 
 def run_retrieval(query: str, args):
     opts = options_from(args)
-    retriever = Retriever()
+    retriever = Retriever(args.repo)
     retriever.prepare(opts)
     return retriever.retrieve(query, args.k, opts), opts
 
@@ -113,6 +113,22 @@ def add_retrieval_flags(p):
     p.add_argument("--rewrite", action="store_true", help="let the LLM rewrite the query first")
 
 
+def cmd_repos(args):
+    """Display indexed repositories and their local freshness."""
+    from gitcontext.repositories import list_repos
+    print('Repository | Chunks | Indexed commit | Stale')
+    for row in list_repos():
+        print(f"{row['repo']} | {row['chunk_count']} | {row['indexed_commit'] or 'unknown'} | "
+              f"{'yes' if row['stale'] else 'no'}")
+
+
+def cmd_remove(args):
+    """Remove one repository index, preserving its checkout."""
+    from gitcontext.repositories import remove_repo
+    remove_repo(args.repo)
+    print(f'Removed index: {args.repo}')
+
+
 def add_metadata_flags(parser):
     """Validate the optional Git provenance filters shared by search and ask."""
     from datetime import date
@@ -130,6 +146,7 @@ def add_metadata_flags(parser):
 
 
 def main():
+    from gitcontext.repositories import repo_id
     parser = argparse.ArgumentParser(description="GitContext: ask questions about a codebase")
     sub = parser.add_subparsers(required=True)
 
@@ -138,20 +155,24 @@ def main():
     p.set_defaults(func=cmd_index)
 
     p = sub.add_parser("update", help="incrementally update an indexed repository")
-    p.add_argument("repo")
+    p.add_argument("source", nargs='?', help='optional checkout or URL')
+    p.add_argument('--repo', type=repo_id, default=config.DEFAULT_REPO)
     p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("status", help="show index freshness against local HEAD")
+    p.add_argument('--repo', type=repo_id, default=config.DEFAULT_REPO)
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("search", help="show retrieved chunks only")
     p.add_argument("query")
+    p.add_argument('--repo', type=repo_id, default=config.DEFAULT_REPO)
     add_retrieval_flags(p)
     add_metadata_flags(p)
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("ask", help="answer a question with citations")
     p.add_argument("question")
+    p.add_argument('--repo', type=repo_id, default=config.DEFAULT_REPO)
     add_retrieval_flags(p)
     add_metadata_flags(p)
     p.set_defaults(func=cmd_ask)
@@ -159,6 +180,12 @@ def main():
     p = sub.add_parser("serve", help="run the FastAPI service")
     p.add_argument("--port", type=int, default=config.API_PORT)
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser('repos', help='list indexed repositories')
+    p.set_defaults(func=cmd_repos)
+    p = sub.add_parser('remove', help='remove a repository index')
+    p.add_argument('repo', type=repo_id)
+    p.set_defaults(func=cmd_remove)
 
     args = parser.parse_args()
     try:

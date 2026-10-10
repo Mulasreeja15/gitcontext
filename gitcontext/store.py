@@ -10,6 +10,7 @@ from qdrant_client.models import (Distance, PointStruct, VectorParams, Filter,
 
 from . import config
 from .chunker import Chunk
+from .repositories import collection_name, repo_id
 
 
 class Embedder:
@@ -33,15 +34,21 @@ class Embedder:
 
 
 class VectorStore:
-    def __init__(self):
+    def __init__(self, repo: str | None = None, client=None):
+        self.repo_id = repo_id(repo or config.DEFAULT_REPO)
         Path(config.QDRANT_PATH).mkdir(parents=True, exist_ok=True)
-        self.client = QdrantClient(path=config.QDRANT_PATH)
+        self.client = client if client is not None else QdrantClient(path=config.QDRANT_PATH)
+
+    @property
+    def collection(self):
+        """All operations, including filtering, remain inside the selected repo."""
+        return collection_name(getattr(self, 'repo_id', config.DEFAULT_REPO))
 
     def reset(self, dim: int) -> None:
-        if self.client.collection_exists(config.COLLECTION):
-            self.client.delete_collection(config.COLLECTION)
+        if self.client.collection_exists(self.collection):
+            self.client.delete_collection(self.collection)
         self.client.create_collection(
-            config.COLLECTION,
+            self.collection,
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
         self.ensure_file_index()
@@ -54,24 +61,24 @@ class VectorStore:
                 for field, schema in [('file_path', PayloadSchemaType.KEYWORD),
                                       ('last_author', PayloadSchemaType.KEYWORD),
                                       ('last_modified', PayloadSchemaType.DATETIME)]:
-                    self.client.create_payload_index(config.COLLECTION, field, schema)
+                    self.client.create_payload_index(self.collection, field, schema)
         except NotImplementedError:
             pass
 
     def delete_by_file(self, file_path: str) -> int:
         """Delete all chunks for an exact repository-relative path; return count."""
-        if not self.client.collection_exists(config.COLLECTION):
+        if not self.client.collection_exists(self.collection):
             return 0
         selector = Filter(must=[FieldCondition(key='file_path', match=MatchValue(value=file_path))])
-        removed = self.client.count(config.COLLECTION, count_filter=selector, exact=True).count
-        self.client.delete(config.COLLECTION, points_selector=FilterSelector(filter=selector))
+        removed = self.client.count(self.collection, count_filter=selector, exact=True).count
+        self.client.delete(self.collection, points_selector=FilterSelector(filter=selector))
         return removed
 
     def count(self) -> int:
         """Return the indexed chunk count, including zero before first indexing."""
-        if not self.client.collection_exists(config.COLLECTION):
+        if not self.client.collection_exists(self.collection):
             return 0
-        return self.client.count(config.COLLECTION, exact=True).count
+        return self.client.count(self.collection, exact=True).count
 
     def upsert(self, chunks: list[Chunk], vectors: list[list[float]], batch: int = 128) -> None:
         for i in range(0, len(chunks), batch):
@@ -79,7 +86,7 @@ class VectorStore:
                 PointStruct(id=c.id, vector=v, payload=c.payload())
                 for c, v in zip(chunks[i:i + batch], vectors[i:i + batch])
             ]
-            self.client.upsert(config.COLLECTION, points=points)
+            self.client.upsert(self.collection, points=points)
 
     @staticmethod
     def metadata_filter(since: str | None = None, author: str | None = None):
@@ -98,7 +105,7 @@ class VectorStore:
     def search(self, vector: list[float], k: int = 6, *, since=None, author=None) -> list[tuple[str, float, dict]]:
         """Returns (id, cosine score, payload) for the k nearest chunks."""
         result = self.client.query_points(
-            config.COLLECTION, query=vector, limit=k, with_payload=True,
+            self.collection, query=vector, limit=k, with_payload=True,
             query_filter=self.metadata_filter(since, author)
         )
         return [(str(p.id), p.score, p.payload) for p in result.points]
@@ -108,7 +115,7 @@ class VectorStore:
         out, offset = [], None
         while True:
             points, offset = self.client.scroll(
-                config.COLLECTION, limit=512, offset=offset,
+                self.collection, limit=512, offset=offset,
                 with_payload=True, with_vectors=False,
                 scroll_filter=self.metadata_filter(since, author),
             )

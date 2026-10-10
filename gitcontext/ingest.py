@@ -6,14 +6,22 @@ from pathlib import Path
 
 from . import config
 from .chunker import Chunk, chunk_file
+from .repositories import infer_repo
 
 
 def resolve_repo(source: str) -> Path:
     """Clone a Git URL into data/repos (full history, needed in later phases)
     or return a local directory."""
     if source.startswith(("http://", "https://", "git@")):
-        name = source.rstrip("/").split("/")[-1].removesuffix(".git")
-        dest = config.REPOS_DIR / name
+        identity = infer_repo(source, Path('.'))
+        dest = config.REPOS_DIR / identity.replace('/', '__')
+        # Reuse older checkouts only when their remote identifies the same repo.
+        legacy = config.REPOS_DIR / identity.split('/')[1]
+        if not dest.exists() and legacy.is_dir():
+            result = subprocess.run(['git', '-C', str(legacy), 'remote', 'get-url', 'origin'],
+                                    capture_output=True, text=True)
+            if result.returncode == 0 and infer_repo(result.stdout.strip(), legacy) == identity:
+                dest = legacy
         if not dest.exists():
             config.REPOS_DIR.mkdir(parents=True, exist_ok=True)
             print(f"Cloning {source} ...")

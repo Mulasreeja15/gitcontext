@@ -96,7 +96,38 @@ python main.py ask "..." --rewrite          # LLM query rewriting (best accuracy
 python main.py ask "..." --rewrite --bm25   # add keyword search (best Recall@5)
 python main.py ask "..." --rerank           # cross-encoder reranking
 python main.py search "..." --include-tests # don't down-rank tests
+
+# Add another repository; existing indexes remain available
+python main.py index https://github.com/pallets/click
+python main.py search "How are command arguments parsed?" --repo pallets/click
+python main.py ask "How does a command group work?" --repo pallets/click
+python main.py status --repo pallets/click
+python main.py update --repo pallets/click
+python main.py repos
+python main.py remove pallets/click
 ```
+
+Search, ask, status, and update default to `psf/requests`. Each repository has a
+separate collection (`repo__psf__requests`, `repo__pallets__click`) in the shared
+`data/qdrant` directory and a state file in `data/index_state`, such as
+`psf__requests.json`. BM25, payload, rewrite, and judge caches are scoped by
+repository. IDs use lowercase `owner/name`; letters, numbers, dots, underscores,
+and hyphens are accepted, with `__` reserved as the separator. Local repositories
+use their remote identity, or `local/<directory>` when no URL remote exists.
+New clones use owner-qualified directories, with matching older clones reused.
+
+`index` replaces only the selected repository's collection. Reindexing
+`psf/requests` migrates the legacy `gitcontext` collection. `remove` deletes the
+selected collection and state, preserving source checkouts. All evaluators
+(`evaluate.py`, `check_labels.py`, `judge.py`) continue targeting `psf/requests`
+by default. Stop the service before CLI storage commands: local Qdrant locks
+the entire shared folder, even across different collections.
+
+Indexing rejects repositories above 200 MB on disk (including Git history) or
+20,000 chunks; limits are configured in `gitcontext/config.py` and checked before
+embedding or replacing stored chunks. Incremental updates apply the chunk limit
+to the resulting index. The API and web UI currently serve the default repo;
+repository selection is available through the core and CLI.
 
 ## API service
 
@@ -112,12 +143,12 @@ reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
 Open `http://127.0.0.1:8000/` for the built-in web UI. Enter a question or use
 Search only to retrieve code without an LLM answer. Citations jump to collapsible
 source cards. Rewrite, BM25, reranking, and test inclusion are optional toggles.
-Repo names and commit freshness come from `data/index_state.json`; older indexes
+Repo names and commit freshness come from `data/index_state/psf__requests.json`; older indexes
 show a generic label until reindexed. The header flags stale indexes.
 
 ```powershell
 .\.venv\Scripts\python.exe main.py status
-.\.venv\Scripts\python.exe main.py update data\repos\requests
+.\.venv\Scripts\python.exe main.py update --repo psf/requests
 ```
 
 Full indexing records repository path, remote URL, commit, timestamp, chunk count,

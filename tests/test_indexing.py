@@ -32,7 +32,8 @@ def repo(tmp_path, monkeypatch):
     for name in ['a.py', 'unchanged.py', 'old name.py', 'deleted.py']:
         (root / name).write_text('def original():\n    return 1\n', encoding='utf-8')
     commit(root, 'initial')
-    monkeypatch.setattr(config, 'INDEX_STATE_PATH', tmp_path / 'index_state.json')
+    monkeypatch.setattr(config, 'INDEX_STATE_DIR', tmp_path / 'index_state')
+    monkeypatch.setattr(config, 'DEFAULT_REPO', 'local/repository')
     return root
 
 
@@ -157,7 +158,7 @@ def test_fallback_full(repo, resources, monkeypatch, reason):
     if reason == 'changed-model':
         monkeypatch.setattr(config, 'EMBED_MODEL', 'another-embedding-model')
     if reason == 'missing-collection':
-        store.client.delete_collection(config.COLLECTION)
+        store.client.delete_collection(store.collection)
     embedder.reset_mock()
     summary = indexing.update_index(str(repo), store=store, embedder=embedder)
     assert summary['mode'] == 'full' and summary['chunks_added'] == 4
@@ -220,3 +221,19 @@ def test_pull_only_managed_clone(repo, resources, tmp_path, monkeypatch):
     git(repo, 'remote', 'set-url', 'origin', str(tmp_path / 'nonexistent.git'))
     indexing.full_index(str(repo), store=store, embedder=embedder)
     assert indexing.update_index(str(repo), store=store, embedder=embedder)['chunks_added'] == 0
+
+
+def test_incremental_limit_preserves_index(repo, resources, monkeypatch):
+    store, embedder = resources
+    indexing.full_index(str(repo), store=store, embedder=embedder)
+    state = indexing.load_state()
+    old_payloads = store.all_payloads()
+    (repo / 'added.py').write_text('def added(): pass', encoding='utf-8')
+    commit(repo, 'exceed chunk limit')
+    monkeypatch.setattr(config, 'MAX_REPO_CHUNKS', 4)
+    embedder.reset_mock()
+    with pytest.raises(ValueError, match='maximum'):
+        indexing.update_index(str(repo), store=store, embedder=embedder)
+    embedder.encode.assert_not_called()
+    assert store.all_payloads() == old_payloads
+    assert indexing.load_state() == state

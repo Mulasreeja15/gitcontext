@@ -4,7 +4,7 @@
 
 GitContext is a retrieval-augmented generation (RAG) system for Python codebases. It parses code with tree-sitter into function, class, and method chunks with context headers containing file paths and symbol names. Small classes stay intact; large classes produce a summary plus method chunks. Oversized chunks are split into line windows. Module-level code and Markdown/RST/text documentation are also indexed.
 
-Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in local Qdrant at `data/qdrant`, in the `gitcontext` collection. The default retrieval pipeline uses vector search and test-file down-ranking. Optional BM25 hybrid retrieval (`--bm25`) uses a code-aware tokenizer and Reciprocal Rank Fusion (RRF); optional cross-encoder reranking (`--rerank`) uses `cross-encoder/ms-marco-MiniLM-L-6-v2`. Optional LLM query rewriting (`--rewrite`) retrieves with both the original and rewritten query and fuses their rankings.
+Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in local Qdrant at `data/qdrant`, with one collection per repository (`repo__<owner>__<name>`). State lives under `data/index_state/<owner>__<name>.json`. The default repository is `psf/requests`. The default retrieval pipeline uses vector search and test-file down-ranking. Optional BM25 hybrid retrieval (`--bm25`) uses a code-aware tokenizer and Reciprocal Rank Fusion (RRF); optional cross-encoder reranking (`--rerank`) uses `cross-encoder/ms-marco-MiniLM-L-6-v2`. Optional LLM query rewriting (`--rewrite`) retrieves with both the original and rewritten query and fuses their rankings. Payload/BM25 caches belong to each Retriever, and rewrite/judge cache keys include repository identity.
 
 Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answers use numbered source excerpts with file paths and line ranges, cite claims inline with `[n]`, and must acknowledge when the supplied sources do not contain the answer.
 
@@ -16,7 +16,8 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/config.py` | Central settings: dotenv loading, models, local storage paths, retrieval tuning, chunk/file limits, supported extensions, and skipped directories. |
 | `gitcontext/chunker.py` | `Chunk` metadata, deterministic UUIDs, embedding context headers, tree-sitter Python parsing, decorated definitions, large-class summaries and methods, line-window splitting, and document sections. |
 | `gitcontext/ingest.py` | Resolve local repositories or clone Git URLs into `data/repos`; walk supported files, skip hidden/generated/oversized content, and collect chunks with repository-relative POSIX paths. |
-| `gitcontext/indexing.py` | Full/incremental indexing, atomic `data/index_state.json`, Git diffs/managed-clone pulls, freshness checks, interrupted-update recovery, and summaries. |
+| `gitcontext/indexing.py` | Full/incremental indexing, atomic per-repo state, disk/chunk limits, Git diffs/managed-clone pulls, freshness checks, interrupted-update recovery, and summaries. |
+| `gitcontext/repositories.py` | Validate repository identities, derive collection/state names, infer URL/remote identities, list indexes, and remove a selected collection/state. |
 | `gitcontext/store.py` | `Embedder` loads sentence-transformers and produces normalized embeddings; `VectorStore` resets/upserts the Qdrant collection, searches by cosine similarity, and scrolls payloads for BM25. |
 | `gitcontext/retriever.py` | Retrieval options/results, identifier tokenization, test-file detection, lazy BM25/reranker setup, vector and keyword rankings, RRF, test penalties, query rewriting, reranking, and latency measurements. |
 | `gitcontext/answer.py` | Groq `_chat()` client with 429 retries, source formatting, cited-answer prompts, and cached query rewriting. |
@@ -24,7 +25,7 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/api.py` | FastAPI lifespan holds one Retriever; validated health/search/ask routes and source-first SSE streaming. Retrieval is serialized to protect lazy initialization and local Qdrant. |
 | `gitcontext/static/index.html` | Self-contained UI served at `/`: vanilla JavaScript, DOM-only Markdown rendering, SSE answers, search-only mode, source cards, and citation navigation. |
 | `judge.py` | Answer-quality evaluation CLI: default retrieval, optional `--rewrite`, `--limit N`, and `--no-cache`; writes `eval/judge_results.md`. |
-| `main.py` | CLI entry point for `index`, `update`, `status`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces the existing collection. |
+| `main.py` | CLI entry point for `index`, `update`, `status`, `repos`, `remove`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces only the selected collection. |
 | `evaluate.py` | Ablation harness: evaluates first relevant ranks up to 10, Recall@1/3/5, MRR@10, and median latency; writes summary and per-question ranks to `eval/results.md`. |
 | `check_labels.py` | Checks that every expected evaluation target matches a chunk in the current index. |
 | `eval/questions.jsonl` | 45 labelled questions for `psf/requests`, with expected file or `path::Symbol` targets. |
@@ -60,7 +61,9 @@ The CLI commands are `python main.py index/search/ask`, `python evaluate.py --wi
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-`index` also accepts a local repository directory and resets the collection, so index `psf/requests` before running its evaluation or label checks. `search` retrieves chunks; `ask` additionally calls Groq. `-k` controls the number of returned chunks (default 6). `--include-tests` disables test down-ranking. Rewriting and answering require credentials loaded by python-dotenv; never inspect the credential file or print keys.
+`index` accepts a local directory or Git URL and resets only its repository collection. URL/remotes infer `owner/name`; local-only directories use `local/<directory>`. New clones use owner-qualified names; matching older clones are reused. `search`, `ask`, `status`, and `update` accept `--repo owner/name` (default `psf/requests`). `update --repo pallets/click` uses the saved checkout; an optional positional source is also supported. `repos` lists counts/commits/staleness; `remove owner/name` removes only index/state, preserving the checkout. Reindexing requests removes the legacy `gitcontext` collection. Evaluation, label checks, and judge evaluation still default to requests. The API/UI still use the default repo. Qdrant locks the shared data folder, so stop the server before any CLI storage operations.
+
+Limits in config are 200 MB on disk (including Git history) and 20,000 chunks. Check limits before embedding/database mutation, including the projected incremental chunk count. `search` retrieves chunks; `ask` additionally calls Groq. `-k` defaults to 6; `--include-tests` disables test down-ranking. During coding commands set `$env:PYTHON_DOTENV_DISABLED='1'`; never inspect the credential file or print keys.
 
 ## Published evaluation results
 

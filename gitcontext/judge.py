@@ -85,8 +85,9 @@ def judge_answer(question: str, generated: str, hits: list, gold: str) -> dict:
 class JudgeCache:
     """Append-only JSONL snapshots preserve answers even if judging is interrupted."""
 
-    def __init__(self, path: Path, enabled: bool = True):
+    def __init__(self, path: Path, enabled: bool = True, repo: str | None = None):
         self.path, self.enabled, self.records = Path(path), enabled, {}
+        self.repo = repo or config.DEFAULT_REPO
         if enabled and self.path.exists():
             for line in self.path.read_text(encoding='utf-8').splitlines():
                 try:
@@ -98,11 +99,12 @@ class JudgeCache:
     @staticmethod
     def key(record: dict) -> tuple:
         """Separate configurations and judge models, and track the answer model too."""
-        return record['question'], record['config'], record['model'], record['answer_model']
+        return (record.get('repo', config.DEFAULT_REPO), record['question'], record['config'],
+                record['model'], record['answer_model'])
 
     def get(self, question: str, name: str) -> dict | None:
         """Look up this configuration under the current generation/judge models."""
-        return self.records.get((question, name, config.JUDGE_MODEL, config.LLM_MODEL))
+        return self.records.get((self.repo, question, name, config.JUDGE_MODEL, config.LLM_MODEL))
 
     def save(self, record: dict) -> None:
         """Persist immediately so reruns need not repeat completed LLM calls."""
@@ -140,7 +142,7 @@ def evaluate_answers(questions: list[dict], rewrite: bool = False,
                     payloads = [p for _, p in retriever.store.all_payloads()]
                 gold = gold_context(payloads, expected)
                 generated = answer.generate_answer(text, hits)
-                record = {'question': text, 'config': name, 'model': config.JUDGE_MODEL,
+                record = {'repo': config.DEFAULT_REPO, 'question': text, 'config': name, 'model': config.JUDGE_MODEL,
                           'answer_model': config.LLM_MODEL, 'expected': expected,
                           'answer': generated, 'hits': [[score, payload] for score, payload in hits],
                           'gold': gold}

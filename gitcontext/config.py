@@ -10,7 +10,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SELF_SKIP_DIRS = {"tests"}  # exclude our unit tests only when indexing this project
 REPOS_DIR = DATA_DIR / "repos"          # cloned repos land here
 QDRANT_PATH = str(DATA_DIR / "qdrant")  # local Qdrant, no Docker needed
-COLLECTION = "gitcontext"
+DEFAULT_REPO = "psf/requests"
+COLLECTION = "repo__psf__requests"
+MAX_REPO_BYTES = 200 * 1024 * 1024
+MAX_REPO_CHUNKS = 20_000
 
 # Embeddings (local, free)
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
@@ -36,7 +39,7 @@ JUDGE_K = 6
 API_HOST = "127.0.0.1"
 API_PORT = 8000
 API_MAX_K = 20
-INDEX_STATE_PATH = DATA_DIR / "index_state.json"
+INDEX_STATE_DIR = DATA_DIR / "index_state"
 INDEX_PAYLOAD_VERSION = 2  # file-level Git provenance and metadata filtering
 UI_PATH = PROJECT_ROOT / "gitcontext" / "static" / "index.html"
 LLM_KEY_NAME = "GROQ_API_KEY"

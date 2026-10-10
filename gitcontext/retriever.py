@@ -82,9 +82,9 @@ class RetrievalResult:
 
 
 class Retriever:
-    def __init__(self):
+    def __init__(self, repo: str | None = None):
         self.embedder = Embedder()
-        self.store = VectorStore()
+        self.store = VectorStore(repo)
         self._payloads: dict[str, dict] = {}
         self._bm25 = None
         self._bm25_ids: list[str] = []
@@ -152,7 +152,7 @@ class Retriever:
         if opts.rewrite:
             from .answer import rewrite_query
             t = time.perf_counter()
-            rewritten = rewrite_query(query)
+            rewritten = rewrite_query(query, repo=getattr(self.store, 'repo_id', config.DEFAULT_REPO))
             timings["rewrite_ms"] = (time.perf_counter() - t) * 1000
             if rewritten and rewritten.lower() != query.lower():
                 queries.append(rewritten)
