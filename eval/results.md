@@ -4,11 +4,11 @@ Repo: psf/requests, 12 labelled questions, ranks checked up to 10.
 
 | Configuration | Recall@1 | Recall@3 | Recall@5 | MRR@10 | Median latency |
 |---|---|---|---|---|---|
-| Vector only (Phase 1 baseline) | 50% | 58% | 67% | 0.591 | 27 ms |
-| + BM25 hybrid (RRF) | 42% | 50% | 75% | 0.526 | 25 ms |
+| Vector only (Phase 1 baseline) | 50% | 58% | 67% | 0.591 | 28 ms |
+| + BM25 hybrid (RRF) | 42% | 50% | 75% | 0.526 | 29 ms |
 | + Test down-ranking | 50% | 67% | 100% | 0.662 | 21 ms |
-| + Cross-encoder rerank | 42% | 75% | 75% | 0.574 | 1153 ms |
-| + LLM query rewriting | 50% | 92% | 100% | 0.697 | 1735 ms |
+| + Cross-encoder rerank | 42% | 75% | 75% | 0.574 | 1156 ms |
+| + LLM query rewriting | 50% | 92% | 100% | 0.697 | 1631 ms |
 
 ## Rank of first correct result per question
 
@@ -26,3 +26,4 @@ Repo: psf/requests, 12 labelled questions, ranks checked up to 10.
 | how are proxy settings taken from environment variables | 1 | 1 | 1 | 1 | 1 |
 | how is a file uploaded as multipart form data | 5 | 5 | 1 | 1 | 1 |
 | how are connection retries configured | 1 | 1 | 1 | 3 | 1 |
+
