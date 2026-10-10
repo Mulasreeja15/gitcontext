@@ -76,3 +76,16 @@ def test_stream_and_buffered_answers_share_prompts():
         answer.stream_answer('q', [])
         assert chat.call_args.args[0] == buffered
         assert chat.call_args.kwargs == {'stream': True}
+
+
+def test_rate_limit_callback_precedes_sleep(monkeypatch):
+    monkeypatch.setenv(config.LLM_KEY_NAME, 'unit-test-placeholder')
+    limited = Mock(status_code=429, headers={'retry-after': '2'})
+    success = Mock(status_code=200)
+    success.iter_lines.return_value = iter([b'data: [DONE]'])
+    events = []
+    with patch.object(answer.requests, 'post', side_effect=[limited, success]), \
+            patch.object(answer.time, 'sleep', side_effect=lambda wait: events.append(('sleep', wait))):
+        stream = answer.stream_answer('q', [], on_retry=lambda wait: events.append(('retry', wait)))
+        assert list(stream) == []
+    assert events == [('retry', 2.0), ('sleep', 2.0)]

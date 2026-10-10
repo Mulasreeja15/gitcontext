@@ -109,6 +109,11 @@ reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
 .\.venv\Scripts\python.exe main.py serve --port 8000
 ```
 
+Open `http://127.0.0.1:8000/` for the built-in web UI. Enter a question or use
+Search only to retrieve code without an LLM answer. Citations jump to collapsible
+source cards. Rewrite, BM25, reranking, and test inclusion are optional toggles.
+Repo names are saved on indexing; older indexes show a generic label until reindexed.
+
 From a second PowerShell terminal:
 
 ```powershell
@@ -117,18 +122,19 @@ $body = @{ query = 'where is the timeout handled'; k = 6 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/search' -ContentType 'application/json' -Body $body
 ```
 
-`GET /health` returns status and indexed chunk count. `POST /search`, `/ask`, and
+`GET /health` returns status, indexed chunk count, and repo name when known. `POST /search`, `/ask`, and
 `/ask/stream` share a request body: `query` (nonempty string), `k` (1-20, default
 6), and boolean `bm25`, `rerank`, `rewrite`, `include_tests` (all false by default).
-Search returns `hits` with source metadata and scores plus `timings`; ask returns
+Search returns `hits` with source metadata, code text, and scores plus `timings`; ask returns
 `answer`, `sources`, and `timings`. Invalid inputs return 422; an empty index or
-unavailable LLM returns 503. Plain search and health do not call Groq; rewriting
+unavailable buffered LLM returns 503. Plain search and health do not call Groq; rewriting
 and answer routes require configured credentials.
 
 `POST /ask/stream` uses SSE with JSON data: `sources` carries sources and retrieval
 timings first, followed by `token` events carrying a `token` string (Groq content
 deltas), and a `done` event with final timings. A failure after streaming begins
-produces an `error` event. HTTP 429 retries happen before the stream begins.
+produces an `error` event. Answer retries send `status` events so the UI reports
+rate limiting live, before any tokens arrive. Sources remain available if Groq fails.
 
 ## Evaluation
 

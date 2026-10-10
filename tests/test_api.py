@@ -12,9 +12,10 @@ from gitcontext import answer
 
 
 @pytest.fixture
-def service(helper_modules):
+def service(helper_modules, tmp_path, monkeypatch):
     """Use real HTTP routing with a single mocked persistent retriever."""
     api = importlib.import_module('gitcontext.api')
+    monkeypatch.setattr(api.config, 'INDEX_METADATA_PATH', tmp_path / 'metadata.json')
     payload = {'file_path': 'tests/test_x.py', 'start_line': 2, 'end_line': 5,
                'kind': 'function', 'name': 'test_x', 'language': 'python', 'text': 'def test_x(): pass'}
     retriever = Mock()
@@ -30,7 +31,7 @@ def service(helper_modules):
 
 def test_health_and_retriever_loaded_once(service):
     client, _, factory = service
-    assert client.get('/health').json() == {'status': 'ok', 'chunks_indexed': 10}
+    assert client.get('/health').json() == {'status': 'ok', 'chunks_indexed': 10, 'repo_name': None}
     client.post('/search', json={'query': 'question'})
     client.post('/search', json={'query': 'another'})
     factory.assert_called_once()
@@ -42,7 +43,8 @@ def test_search_defaults_and_metadata(service):
     assert response.status_code == 200
     body = response.json()
     assert body['hits'] == [{'file_path': 'tests/test_x.py', 'start_line': 2, 'end_line': 5,
-                            'kind': 'function', 'name': 'test_x', 'score': 0.75, 'is_test': True}]
+                            'kind': 'function', 'name': 'test_x', 'score': 0.75, 'is_test': True,
+                            'text': 'def test_x(): pass'}]
     assert body['timings'] == {'search_ms': 2.0, 'total_ms': 3.0}
     query, k, options = retriever.retrieve.call_args.args
     assert query == 'question' and k == 6
@@ -107,13 +109,55 @@ def test_stream_sources_first_and_tokens(service):
     assert 'answer_ms' in values[-1]['timings']
 
 
-@pytest.mark.parametrize('path,function', [('/ask', 'generate_answer'), ('/ask/stream', 'stream_answer')])
+@pytest.mark.parametrize('path,function', [('/ask', 'generate_answer')])
 def test_llm_unavailable_returns_503(service, path, function):
     client, _, _ = service
     with patch.object(answer, function, side_effect=SystemExit('missing credential')):
         response = client.post(path, json={'query': 'q'})
     assert response.status_code == 503
     assert 'unavailable' in response.json()['detail']
+
+
+def test_stream_unavailable_keeps_sources_and_sends_error(service):
+    client, _, _ = service
+    with patch.object(answer, 'stream_answer', side_effect=SystemExit('missing credential')):
+        response = client.post('/ask/stream', json={'query': 'q'})
+    assert response.status_code == 200
+    assert response.text.startswith('event: sources')
+    assert 'event: error' in response.text and 'unavailable' in response.text
+
+
+def test_home_serves_self_contained_html(service):
+    client, retriever, _ = service
+    response = client.get('/')
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('text/html')
+    assert '<title>GitContext' in response.text
+    assert 'Search only' in response.text and '/ask/stream' in response.text
+    assert 'innerHTML' not in response.text
+    assert '<script src=' not in response.text
+    retriever.retrieve.assert_not_called()
+
+
+def test_health_repo_name_from_index_metadata(service):
+    client, _, _ = service
+    from gitcontext import config
+    config.INDEX_METADATA_PATH.write_text(json.dumps({'repo_name': 'requests'}), encoding='utf-8')
+    assert client.get('/health').json()['repo_name'] == 'requests'
+
+
+def test_retry_status_event_arrives_before_tokens(service):
+    client, _, _ = service
+
+    def stream(query, hits, on_retry=None):
+        on_retry(5)
+        return iter(['answer'])
+
+    with patch.object(answer, 'stream_answer', side_effect=stream):
+        response = client.post('/ask/stream', json={'query': 'q'})
+    assert response.text.startswith('event: sources')
+    assert 'Groq is rate limiting, retrying...' in response.text
+    assert response.text.index('event: status') < response.text.index('event: token')
 
 
 def test_stream_error_event_and_cleanup(service):

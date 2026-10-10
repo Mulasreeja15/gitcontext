@@ -21,6 +21,7 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/answer.py` | Groq `_chat()` client with 429 retries, source formatting, cited-answer prompts, and cached query rewriting. |
 | `gitcontext/judge.py` | Answer-quality judge, JSON validation/retry, gold context, deterministic citation checks, resumable JSONL cache, and Markdown reports. |
 | `gitcontext/api.py` | FastAPI lifespan holds one Retriever; validated health/search/ask routes and source-first SSE streaming. Retrieval is serialized to protect lazy initialization and local Qdrant. |
+| `gitcontext/static/index.html` | Self-contained UI served at `/`: vanilla JavaScript, DOM-only Markdown rendering, SSE answers, search-only mode, source cards, and citation navigation. |
 | `judge.py` | Answer-quality evaluation CLI: default retrieval, optional `--rewrite`, `--limit N`, and `--no-cache`; writes `eval/judge_results.md`. |
 | `main.py` | CLI entry point for `index`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces the existing collection. |
 | `evaluate.py` | Ablation harness: evaluates first relevant ranks up to 10, Recall@1/3/5, MRR@10, and median latency; writes summary and per-question ranks to `eval/results.md`. |

@@ -28,7 +28,7 @@ MAX_RETRIES = 6
 
 
 def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
-          model: str | None = None, stream: bool = False) -> str | Iterator[str]:
+          model: str | None = None, stream: bool = False, on_retry=None) -> str | Iterator[str]:
     """Call Groq with shared rate-limit retries and an optional model override."""
     key = os.getenv(config.LLM_KEY_NAME)
     if not key:
@@ -53,6 +53,8 @@ def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
             wait = float(retry_after) if retry_after else 5 * 2 ** attempt
             wait = min(wait, 60)
             r.close()
+            if on_retry is not None:
+                on_retry(wait)
             print(f"  Rate limited by Groq, waiting {wait:.0f}s (attempt {attempt + 1}/{MAX_RETRIES}) ...")
             time.sleep(wait)
             continue
@@ -159,9 +161,12 @@ def generate_answer(question: str, hits: list[tuple[float, dict]]) -> str:
     return _chat(_answer_messages(question, hits))
 
 
-def stream_answer(question: str, hits: list[tuple[float, dict]]) -> Iterator[str]:
+def stream_answer(question: str, hits: list[tuple[float, dict]], on_retry=None) -> Iterator[str]:
     """Open a retrying Groq stream before returning its content iterator."""
-    return _chat(_answer_messages(question, hits), stream=True)
+    options = {'stream': True}
+    if on_retry is not None:
+        options['on_retry'] = on_retry
+    return _chat(_answer_messages(question, hits), **options)
 
 
 @lru_cache(maxsize=1024)

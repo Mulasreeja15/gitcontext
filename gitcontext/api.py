@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import time
+import json
+from queue import Queue
 from contextlib import asynccontextmanager
-from threading import Lock
+from threading import Lock, Event, Thread
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, field_validator
-from starlette.background import BackgroundTask
 
 from . import answer, config
 
@@ -41,11 +42,13 @@ class Source(BaseModel):
     name: str
     score: float
     is_test: bool
+    text: str
 
 
 class HealthResponse(BaseModel):
     status: str = 'ok'
     chunks_indexed: int
+    repo_name: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -76,6 +79,10 @@ class ErrorEvent(BaseModel):
     detail: str
 
 
+class StatusEvent(BaseModel):
+    message: str
+
+
 def create_retriever():
     """Import expensive dependencies only during application startup."""
     from .retriever import Retriever
@@ -94,6 +101,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title='GitContext', lifespan=lifespan)
+
+
+@app.get('/', response_class=FileResponse)
+def home():
+    """Serve the self-contained UI without a static-file server or build step."""
+    return FileResponse(config.UI_PATH, media_type='text/html')
+
+
+def _repo_name() -> str | None:
+    """Read metadata saved on successful indexing; old indexes have no name."""
+    try:
+        value = json.loads(config.INDEX_METADATA_PATH.read_text(encoding='utf-8')).get('repo_name')
+        return value if isinstance(value, str) else None
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def _retrieve(body: SearchRequest, request: Request):
@@ -116,7 +138,7 @@ def _sources(hits) -> list[Source]:
     """Keep source order stable while exposing only public source metadata."""
     from .retriever import is_test
     return [Source(**{field: payload[field] for field in
-                    ('file_path', 'start_line', 'end_line', 'kind', 'name')},
+                    ('file_path', 'start_line', 'end_line', 'kind', 'name', 'text')},
                    score=score, is_test=is_test(payload)) for score, payload in hits]
 
 
@@ -132,7 +154,7 @@ def health(request: Request):
     """Report readiness and count without scanning every payload."""
     with request.app.state.retrieval_lock:
         count = request.app.state.retriever.store.count()
-    return HealthResponse(chunks_indexed=count)
+    return HealthResponse(chunks_indexed=count, repo_name=_repo_name() if count else None)
 
 
 @app.post('/search', response_model=SearchResponse)
@@ -165,24 +187,39 @@ def ask_stream(body: SearchRequest, request: Request):
     """Send sources first, then content deltas and final timing or a stream error."""
     result = _retrieve(body, request)
     started = time.perf_counter()
-    try:
-        tokens = answer.stream_answer(body.query, result.hits)
-    except (SystemExit, requests.RequestException):
-        raise HTTPException(503, 'Answer stream is unavailable. Check Groq configuration or retry later.') from None
-
     def events():
+        messages = Queue()
+        stopped = Event()
+
+        def generate():
+            """Keep the SSE connection responsive while Groq backs off on 429."""
+            tokens = None
+            try:
+                tokens = answer.stream_answer(body.query, result.hits,
+                    on_retry=lambda wait: messages.put(('status', StatusEvent(
+                        message='Groq is rate limiting, retrying...'))))
+                for token in tokens:
+                    if stopped.is_set():
+                        break
+                    messages.put(('token', TokenEvent(token=token)))
+                messages.put(('done', DoneEvent(timings=_answer_timings(result.timings, started))))
+            except (SystemExit, Exception):
+                messages.put(('error', ErrorEvent(detail='Answer generation is unavailable or interrupted. Try Search only or retry.')))
+            finally:
+                close = getattr(tokens, 'close', None)
+                if close is not None:
+                    close()
+
         try:
             yield _event('sources', SourcesEvent(sources=_sources(result.hits), timings=result.timings))
-            for token in tokens:
-                yield _event('token', TokenEvent(token=token))
-            yield _event('done', DoneEvent(timings=_answer_timings(result.timings, started)))
-        except (SystemExit, requests.RequestException, ValueError, KeyError, TypeError):
-            yield _event('error', ErrorEvent(detail='Answer stream interrupted; retry the request.'))
+            Thread(target=generate, daemon=True).start()
+            while True:
+                name, value = messages.get()
+                yield _event(name, value)
+                if name in {'done', 'error'}:
+                    break
         finally:
-            close = getattr(tokens, 'close', None)
-            if close is not None:
-                close()
+            stopped.set()
 
     return StreamingResponse(events(), media_type='text/event-stream',
-                             background=BackgroundTask(getattr(tokens, 'close', lambda: None)),
                              headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})

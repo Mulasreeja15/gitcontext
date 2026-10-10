@@ -14,6 +14,7 @@ Retrieval options:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from collections import Counter
@@ -45,6 +46,7 @@ def cmd_index(args):
     store = VectorStore()
     store.reset(embedder.dim)
     store.upsert(chunks, vectors)
+    config.INDEX_METADATA_PATH.write_text(json.dumps({'repo_name': root.name}), encoding='utf-8')
     print(f"Done. Embedded + stored in {time.time() - t0:.1f}s")
 
 
