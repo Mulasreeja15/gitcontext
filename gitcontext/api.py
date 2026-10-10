@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import answer, config
 from .indexing import index_status, load_state, update_index
+from datetime import date
 
 
 class SearchRequest(BaseModel):
@@ -23,6 +24,16 @@ class SearchRequest(BaseModel):
     rerank: bool = False
     rewrite: bool = False
     include_tests: bool = False
+    since: str | None = None
+    author: str | None = Field(default=None, min_length=1)
+
+    @field_validator('since')
+    @classmethod
+    def since_date(cls, value):
+        """Require the same canonical date format as the CLI."""
+        if value is not None and date.fromisoformat(value).isoformat() != value:
+            raise ValueError('since must be YYYY-MM-DD')
+        return value
 
     @field_validator('query')
     @classmethod
@@ -43,6 +54,9 @@ class Source(BaseModel):
     score: float
     is_test: bool
     text: str
+    last_commit_sha: str | None = None
+    last_author: str | None = None
+    last_modified: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -128,7 +142,8 @@ def _retrieve(body: SearchRequest, request: Request):
     """Serialize retrieval to protect lazy model initialization and local storage."""
     from .retriever import RetrievalOptions
     opts = RetrievalOptions(bm25=body.bm25, rerank=body.rerank,
-                            penalize_tests=not body.include_tests, rewrite=body.rewrite)
+                            penalize_tests=not body.include_tests, rewrite=body.rewrite,
+                            since=body.since, author=body.author)
     retriever = request.app.state.retriever
     with request.app.state.retrieval_lock:
         if retriever.store.count() == 0:
@@ -145,7 +160,8 @@ def _sources(hits) -> list[Source]:
     from .retriever import is_test
     return [Source(**{field: payload[field] for field in
                     ('file_path', 'start_line', 'end_line', 'kind', 'name', 'text')},
-                   score=score, is_test=is_test(payload)) for score, payload in hits]
+                   score=score, is_test=is_test(payload),
+                   **{field: payload.get(field) for field in ('last_commit_sha', 'last_author', 'last_modified')}) for score, payload in hits]
 
 
 def _answer_timings(timings: dict, started: float) -> dict[str, float]:

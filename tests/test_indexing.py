@@ -96,6 +96,59 @@ def test_delete_filter_is_exact(repo, resources):
     assert 'unchanged.py' in {p['file_path'] for _, p in store.all_payloads()}
 
 
+def test_git_metadata_full_incremental_and_filters(repo, resources, monkeypatch):
+    from unittest.mock import patch
+    store, embedder = resources
+    with patch.object(indexing, 'git', wraps=indexing.git) as calls:
+        indexing.full_index(str(repo), store=store, embedder=embedder)
+        assert sum(call.args[1] == 'log' for call in calls.call_args_list) == 1
+    before = {p['file_path']: p for _, p in store.all_payloads()}
+    initial_sha = git(repo, 'rev-parse', 'HEAD')
+    assert all(p['last_author'] == 'Unit Test' and p['last_commit_sha'] == initial_sha for p in before.values())
+    assert all('@' not in p['last_author'] for p in before.values())
+    (repo / 'a.py').write_text('def updated():\n    return 42\n', encoding='utf-8')
+    git(repo, 'add', 'a.py')
+    monkeypatch.setenv('GIT_AUTHOR_DATE', '2030-03-02T12:00:00+00:00')
+    monkeypatch.setenv('GIT_COMMITTER_DATE', '2030-03-02T12:00:00+00:00')
+    git(repo, 'commit', '--author=Another Author <ignored@example.invalid>', '-m', 'new author')
+    sha = git(repo, 'rev-parse', 'HEAD')
+    with patch.object(indexing, 'git', wraps=indexing.git) as calls:
+        indexing.update_index(str(repo), store=store, embedder=embedder)
+        assert sum(call.args[1] == 'log' for call in calls.call_args_list) == 1
+    after = {p['file_path']: p for _, p in store.all_payloads()}
+    assert after['a.py']['last_commit_sha'] == sha
+    assert after['a.py']['last_author'] == 'Another Author'
+    assert after['a.py']['last_modified'].startswith('2030-03-02')
+    assert after['unchanged.py'] == before['unchanged.py']
+    assert {p['file_path'] for _, _, p in store.search([1., 0., 0.], author='Another Author')} == {'a.py'}
+    assert {p['file_path'] for _, p in store.all_payloads(since='2030-03-02')} == {'a.py'}
+    assert store.search([1., 0., 0.], since='2030-03-03') == []
+    assert store.search([1., 0., 0.], author='Another Author', since='2030-03-03') == []
+    assert store.search([1., 0., 0.], author='another author') == []
+    with pytest.raises(ValueError):
+        store.metadata_filter('not-a-date')
+
+
+def test_hybrid_filters_cannot_reintroduce_excluded_sources(repo, resources, helper_modules):
+    store, embedder = resources
+    indexing.full_index(str(repo), store=store, embedder=embedder)
+    module, _ = helper_modules
+    retriever = module.Retriever.__new__(module.Retriever)
+    retriever.store, retriever.embedder = store, embedder
+    retriever._payloads, retriever._bm25_ids = {}, []
+    retriever._bm25, retriever._reranker = None, None
+    result = retriever.retrieve('original', opts=module.RetrievalOptions(bm25=True, author='missing author'))
+    assert result.hits == []
+
+
+def test_metadata_does_not_change_embedding_text_or_ids():
+    from gitcontext.chunker import chunk_python
+    chunks = chunk_python('x.py', 'def f(): pass')
+    updated = indexing.annotate_chunks(chunks, {'x.py': dict(last_commit_sha='abc', last_author='Name', last_modified='2030-01-01T00:00:00Z')})
+    assert updated[0].embedding_text() == chunks[0].embedding_text()
+    assert updated[0].id == chunks[0].id
+
+
 @pytest.mark.parametrize('reason', ['missing-state', 'changed-model', 'missing-collection'])
 def test_fallback_full(repo, resources, monkeypatch, reason):
     store, embedder = resources

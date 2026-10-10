@@ -157,6 +157,23 @@ rate limiting live, before any tokens arrive. Sources remain available if Groq f
 
 ## Evaluation
 
+Every indexed chunk carries its file's last modifying commit SHA, author name
+(no email address), and ISO commit timestamp. Full and incremental indexing use
+a single batched Git history pass. Provenance is displayed in CLI results, API
+sources, and web source cards, and does not enter embedding text.
+
+```powershell
+.\.venv\Scripts\python.exe main.py search "resolve_redirects" --since 2024-03-02
+.\.venv\Scripts\python.exe main.py search "HTTPAdapter" --author "Author Name"
+```
+
+API search/ask bodies accept optional `since` (`YYYY-MM-DD`) and `author` fields.
+Dates are inclusive from midnight UTC, authors match exact names (case-sensitive),
+and combined filters use AND. Qdrant filters apply before vector search; hybrid
+BM25 candidates are restricted to the same Qdrant-filtered set. Non-Git files
+have null provenance and do not match metadata filters. Older payload schemas
+trigger a full rebuild on update.
+
 ```bash
 python evaluate.py                  # ablation over all retrieval configurations
 python evaluate.py --with-rewrite   # include LLM query rewriting

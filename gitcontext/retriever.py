@@ -58,6 +58,8 @@ class RetrievalOptions:
     rerank: bool = False
     penalize_tests: bool = True
     rewrite: bool = False
+    since: str | None = None
+    author: str | None = None
 
     def describe(self) -> str:
         parts = ["vector"]
@@ -122,19 +124,21 @@ class Retriever:
 
     # ---------- individual retrievers ----------
 
-    def _vector_ranking(self, query: str) -> list[str]:
-        hits = self.store.search(self.embedder.encode([query])[0], config.CANDIDATES)
+    def _vector_ranking(self, query: str, opts: RetrievalOptions) -> list[str]:
+        hits = self.store.search(self.embedder.encode([query])[0], config.CANDIDATES,
+                                 since=opts.since, author=opts.author)
         for pid, _, p in hits:
             self._payloads[pid] = p
         return [pid for pid, _, _ in hits]
 
-    def _bm25_ranking(self, query: str) -> list[str]:
+    def _bm25_ranking(self, query: str, allowed: set[str] | None = None) -> list[str]:
         self._ensure_bm25()
         tokens = tokenize(query)
         if not tokens:
             return []
         scores = self._bm25.get_scores(tokens)
-        top = np.argsort(scores)[::-1][:config.CANDIDATES]
+        top = [i for i in np.argsort(scores)[::-1]
+               if allowed is None or self._bm25_ids[i] in allowed][:config.CANDIDATES]
         return [self._bm25_ids[i] for i in top if scores[i] > 0]
 
     # ---------- full pipeline ----------
@@ -156,10 +160,13 @@ class Retriever:
         # 1) gather rankings from every retriever for every query version
         t = time.perf_counter()
         rankings = []
+        allowed = None
+        if opts.bm25 and (opts.since or opts.author):
+            allowed = {pid for pid, _ in self.store.all_payloads(since=opts.since, author=opts.author)}
         for q in queries:
-            rankings.append(self._vector_ranking(q))
+            rankings.append(self._vector_ranking(q, opts))
             if opts.bm25:
-                rankings.append(self._bm25_ranking(q))
+                rankings.append(self._bm25_ranking(q, allowed))
 
         # 2) Reciprocal Rank Fusion: score = sum of 1 / (RRF_K + rank)
         fused: dict[str, float] = defaultdict(float)

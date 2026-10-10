@@ -23,6 +23,9 @@ class Chunk:
     language: str
     text: str
     parent: str = ""
+    last_commit_sha: str | None = None
+    last_author: str | None = None
+    last_modified: str | None = None
 
     @property
     def id(self) -> str:

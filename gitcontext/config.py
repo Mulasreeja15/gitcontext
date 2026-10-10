@@ -37,6 +37,7 @@ API_HOST = "127.0.0.1"
 API_PORT = 8000
 API_MAX_K = 20
 INDEX_STATE_PATH = DATA_DIR / "index_state.json"
+INDEX_PAYLOAD_VERSION = 2  # file-level Git provenance and metadata filtering
 UI_PATH = PROJECT_ROOT / "gitcontext" / "static" / "index.html"
 LLM_KEY_NAME = "GROQ_API_KEY"
 

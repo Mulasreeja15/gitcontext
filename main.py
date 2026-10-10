@@ -10,6 +10,8 @@ Retrieval options:
   --rerank        use the cross-encoder reranker
   --include-tests  don't down-rank test files
   --rewrite        let the LLM rewrite the query first
+  --since DATE     last modified on/after YYYY-MM-DD (UTC)
+  --author NAME    exact last author name
 """
 from __future__ import annotations
 
@@ -50,11 +52,13 @@ def cmd_status(args):
 
 
 def options_from(args) -> RetrievalOptions:
+    metadata = {key: getattr(args, key) for key in ('since', 'author') if getattr(args, key, None)}
     return RetrievalOptions(
         bm25=args.bm25,
         rerank=args.rerank,
         penalize_tests=not args.include_tests,
         rewrite=args.rewrite,
+        **metadata,
     )
 
 
@@ -75,6 +79,8 @@ def print_result(result, opts):
             f"[{i}] {score:8.4f}  {p['file_path']}:{p['start_line']}-{p['end_line']}  "
             f"({p['kind']}: {p['name']}){tag}"
         )
+        if p.get('last_commit_sha'):
+            print(f"    last changed {p['last_modified'][:10]} by {p['last_author']}, {p['last_commit_sha'][:7]}")
     parts = [f"{name.replace('_ms', '')} {ms:.0f} ms" for name, ms in result.timings.items()]
     print("\nLatency: " + ", ".join(parts))
 
@@ -107,6 +113,22 @@ def add_retrieval_flags(p):
     p.add_argument("--rewrite", action="store_true", help="let the LLM rewrite the query first")
 
 
+def add_metadata_flags(parser):
+    """Validate the optional Git provenance filters shared by search and ask."""
+    from datetime import date
+
+    def since_date(value):
+        try:
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError
+        except ValueError:
+            raise argparse.ArgumentTypeError('since must be YYYY-MM-DD') from None
+        return value
+
+    parser.add_argument('--since', type=since_date, help='last modified on/after YYYY-MM-DD (UTC)')
+    parser.add_argument('--author', help='exact last author name')
+
+
 def main():
     parser = argparse.ArgumentParser(description="GitContext: ask questions about a codebase")
     sub = parser.add_subparsers(required=True)
@@ -125,11 +147,13 @@ def main():
     p = sub.add_parser("search", help="show retrieved chunks only")
     p.add_argument("query")
     add_retrieval_flags(p)
+    add_metadata_flags(p)
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("ask", help="answer a question with citations")
     p.add_argument("question")
     add_retrieval_flags(p)
+    add_metadata_flags(p)
     p.set_defaults(func=cmd_ask)
 
     p = sub.add_parser("serve", help="run the FastAPI service")

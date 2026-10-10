@@ -129,6 +129,7 @@ function sources(hits) {
     const main = element('div', undefined, 'source-main');
     main.append(element('div', hit.file_path + ':' + hit.start_line + '–' + hit.end_line, 'path'));
     main.append(element('div', hit.kind + ' · ' + hit.name, 'symbol')); summary.append(main);
+    if (hit.last_commit_sha) main.append(element('div', 'last changed ' + (hit.last_modified || '').slice(0,10) + ' by ' + hit.last_author + ', ' + hit.last_commit_sha.slice(0,7), 'symbol'));
     const meta = element('div', undefined, 'source-meta');
     if (hit.is_test) meta.append(element('span', 'test', 'badge'));
     meta.append(element('span', Number(hit.score).toFixed(4)));

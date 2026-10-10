@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,13 +13,35 @@ from .chunker import chunk_file
 from .ingest import collect_chunks, resolve_repo, supported_path
 
 
+def file_metadata(root: Path, commit: str | None) -> dict[str, dict]:
+    """Read history once, recording first occurrence of each file; names, never emails."""
+    if not commit:
+        return {}
+    history = git(root, 'log', '--date-order', '--no-renames', '-z', '--name-only',
+                  '--format=%x1e%H%x1f%an%x1f%cI', commit, '--')
+    metadata, current = {}, None
+    for field in history.split('\0'):
+        field = field.lstrip('\n')
+        if field.startswith('\x1e'):
+            sha, author, modified = field[1:].split('\x1f', 2)
+            current = dict(last_commit_sha=sha, last_author=author, last_modified=modified)
+        elif field and current is not None:
+            metadata.setdefault(field, current)
+    return metadata
+
+
+def annotate_chunks(chunks, metadata):
+    """Attach provenance without changing chunk IDs or embedding text."""
+    return [replace(chunk, **metadata.get(chunk.file_path, {})) for chunk in chunks]
+
+
 def git(root: Path, *args: str, optional: bool = False) -> str:
     """Run Git with explicit argument boundaries; never inspect source credentials."""
     result = subprocess.run(['git', '-C', str(root), *args], capture_output=True,
                             encoding='utf-8', errors='replace')
     if result.returncode and not optional:
         raise ValueError(f'Git {args[0]} failed. Check repository history, permissions, or working tree.')
-    return result.stdout.strip() if result.returncode == 0 else ''
+    return result.stdout.rstrip('\n') if result.returncode == 0 else ''
 
 
 def load_state() -> dict | None:
@@ -47,7 +70,7 @@ def save_state(root: Path, store, commit: str | None) -> dict:
              'indexed_commit': commit, 'repo_name': root.name,
              'timestamp': datetime.now(timezone.utc).isoformat(),
              'chunk_count': store.count(), 'embed_model': config.EMBED_MODEL,
-             'incomplete': False}
+             'incomplete': False, 'payload_version': config.INDEX_PAYLOAD_VERSION}
     _write_state(state)
     return state
 
@@ -104,7 +127,8 @@ def index_status() -> dict:
         untracked = git(root, 'ls-files', '--others', '--exclude-standard', '-z', optional=True).split('\0')
         pending = {path for path in dirty + untracked if path and supported_path(root, path)}
         result['changed_files'] += len(pending)
-        result['stale'] = head != old or bool(pending) or state['embed_model'] != config.EMBED_MODEL or state.get('incomplete', False)
+        result['stale'] = (head != old or bool(pending) or state['embed_model'] != config.EMBED_MODEL
+                           or state.get('incomplete', False) or state.get('payload_version') != config.INDEX_PAYLOAD_VERSION)
     except ValueError:
         pass  # old commit no longer exists, so a full index is needed
     return result
@@ -140,7 +164,7 @@ def full_index(source: str, *, store=None, embedder=None) -> dict:
     head = git(root, 'rev-parse', 'HEAD', optional=True) or None
     if head:
         _clean_tree(root)
-    chunks = collect_chunks(root)
+    chunks = annotate_chunks(collect_chunks(root), file_metadata(root, head))
     if embedder is None:
         from .store import Embedder
         embedder = Embedder()
@@ -176,7 +200,8 @@ def update_index(source: str, *, store=None, embedder=None) -> dict:
     state = load_state()
     head = git(root, 'rev-parse', 'HEAD', optional=True)
     if (not state or Path(state['repo_path']).resolve() != root or
-            state['embed_model'] != config.EMBED_MODEL or state.get('incomplete') or not head or not state['indexed_commit']):
+            state['embed_model'] != config.EMBED_MODEL or state.get('incomplete') or not head or not state['indexed_commit']
+            or state.get('payload_version') != config.INDEX_PAYLOAD_VERSION):
         return full_index(str(root), store=store, embedder=embedder)
     old = state['indexed_commit']
     ancestor = subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', old, head],
@@ -184,6 +209,7 @@ def update_index(source: str, *, store=None, embedder=None) -> dict:
     if not ancestor:
         return full_index(str(root), store=store, embedder=embedder)
     changes = changed_files(root, old, head)
+    metadata = file_metadata(root, head) if changes else {}
     behind = int(git(root, 'rev-list', '--count', f'{old}..{head}'))
     if not store.count():
         return full_index(str(root), store=store, embedder=embedder)
@@ -205,7 +231,7 @@ def update_index(source: str, *, store=None, embedder=None) -> dict:
         chunks = []
         if add_new and path.is_file() and path.stat().st_size <= config.MAX_FILE_BYTES:
             try:
-                chunks = chunk_file(target, path.read_text(encoding='utf-8'))
+                chunks = annotate_chunks(chunk_file(target, path.read_text(encoding='utf-8')), metadata)
             except UnicodeDecodeError:
                 pass
         if chunks and embedder is None:

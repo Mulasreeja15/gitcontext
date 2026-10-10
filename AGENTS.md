@@ -33,6 +33,12 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 
 ## Running on Windows
 
+Indexing batches Git history to attach `last_commit_sha`, `last_author` (name only),
+and `last_modified` (ISO commit time) to each file's chunks. These fields stay out
+of embedding text. Search/ask accept `--since YYYY-MM-DD` (inclusive UTC date) and
+`--author NAME` (exact case-sensitive last-author match). API bodies accept `since`
+and `author`; vector and hybrid candidates respect the same Qdrant payload filters.
+
 Run commands from the repository root and use the existing virtual environment. PowerShell activation:
 
 ```powershell

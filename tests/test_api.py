@@ -45,7 +45,8 @@ def test_search_defaults_and_metadata(service):
     body = response.json()
     assert body['hits'] == [{'file_path': 'tests/test_x.py', 'start_line': 2, 'end_line': 5,
                             'kind': 'function', 'name': 'test_x', 'score': 0.75, 'is_test': True,
-                            'text': 'def test_x(): pass'}]
+                            'text': 'def test_x(): pass', 'last_commit_sha': None,
+                            'last_author': None, 'last_modified': None}]
     assert body['timings'] == {'search_ms': 2.0, 'total_ms': 3.0}
     query, k, options = retriever.retrieve.call_args.args
     assert query == 'question' and k == 6
@@ -58,6 +59,17 @@ def test_search_option_mapping(service):
                                         'rerank': True, 'rewrite': True, 'include_tests': True}).status_code == 200
     _, k, options = retriever.retrieve.call_args.args
     assert k == 20 and options.bm25 and options.rerank and options.rewrite and not options.penalize_tests
+
+
+def test_metadata_options_and_response(service):
+    client, retriever, _ = service
+    payload = retriever.retrieve.return_value.hits[0][1]
+    payload.update(last_author='Author', last_commit_sha='abc1234', last_modified='2024-03-02T00:00:00Z')
+    response = client.post('/search', json={'query':'q', 'since':'2024-03-02', 'author':'Author'})
+    assert response.json()['hits'][0]['last_author'] == 'Author'
+    options = retriever.retrieve.call_args.args[2]
+    assert options.since == '2024-03-02' and options.author == 'Author'
+    assert client.post('/search', json={'query':'q', 'since':'2024-02-30'}).status_code == 422
 
 
 @pytest.mark.parametrize('path', ['/search', '/ask', '/ask/stream'])
