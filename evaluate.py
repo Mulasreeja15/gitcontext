@@ -21,11 +21,15 @@ DEPTH = 10  # ranks checked per question (for MRR)
 
 CONFIGS = [
     ("Vector only (Phase 1 baseline)", RetrievalOptions(bm25=False, rerank=False, penalize_tests=False)),
-    ("+ BM25 hybrid (RRF)", RetrievalOptions(bm25=True, rerank=False, penalize_tests=False)),
-    ("+ Test down-ranking", RetrievalOptions(bm25=True, rerank=False, penalize_tests=True)),
-    ("+ Cross-encoder rerank", RetrievalOptions(bm25=True, rerank=True, penalize_tests=True)),
+    ("Vector + test down-ranking", RetrievalOptions(bm25=False, rerank=False, penalize_tests=True)),
+    ("Hybrid (vector + BM25, RRF)", RetrievalOptions(bm25=True, rerank=False, penalize_tests=False)),
+    ("Hybrid + test down-ranking", RetrievalOptions(bm25=True, rerank=False, penalize_tests=True)),
+    ("Hybrid + test down-ranking + rerank", RetrievalOptions(bm25=True, rerank=True, penalize_tests=True)),
 ]
-REWRITE_CONFIG = ("+ LLM query rewriting", RetrievalOptions(rewrite=True))
+REWRITE_CONFIGS = [
+    ("Vector + test down-ranking + LLM rewrite", RetrievalOptions(bm25=False, rerank=False, penalize_tests=True, rewrite=True)),
+    ("Hybrid + test down-ranking + LLM rewrite", RetrievalOptions(bm25=True, rerank=False, penalize_tests=True, rewrite=True)),
+]
 
 
 def load_questions() -> list[dict]:
@@ -64,7 +68,7 @@ def main():
     args = parser.parse_args()
 
     questions = load_questions()
-    configs = CONFIGS + ([REWRITE_CONFIG] if args.with_rewrite else [])
+    configs = CONFIGS + (REWRITE_CONFIGS if args.with_rewrite else [])
     n = len(questions)
 
     retriever = Retriever()

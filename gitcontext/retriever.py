@@ -54,7 +54,7 @@ def _passage(p: dict) -> str:
 
 @dataclass
 class RetrievalOptions:
-    bm25: bool = True
+    bm25: bool = False
     rerank: bool = False
     penalize_tests: bool = True
     rewrite: bool = False

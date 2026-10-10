@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import time
+from functools import lru_cache
 
 import requests
 
@@ -20,25 +22,37 @@ Write the identifiers, function names, class names and technical terms most like
 in the source code that answers the question.
 Return ONLY the query, on one line, with no explanation and no quotes."""
 
+MAX_RETRIES = 6
+
 
 def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120) -> str:
     key = os.getenv(config.LLM_KEY_NAME)
     if not key:
         raise SystemExit(f"Missing {config.LLM_KEY_NAME}. Add it to your .env file.")
-    r = requests.post(
-        config.LLM_URL,
-        headers={"Authorization": f"Bearer {key}"},
-        json={"model": config.LLM_MODEL, "messages": messages, "temperature": temperature},
-        timeout=timeout,
-    )
-    if r.status_code == 401:
-        raise SystemExit("API key rejected (401). Check the key in your .env file.")
-    if r.status_code == 413:
-        raise SystemExit("Request too large (413). Try fewer sources: add  -k 4  to your command.")
-    if r.status_code == 429:
-        raise SystemExit("Rate limit hit (429). Wait a minute, or try fewer sources with  -k 4")
-    r.raise_for_status()
-    return (r.json()["choices"][0]["message"]["content"] or "").strip()
+
+    for attempt in range(MAX_RETRIES):
+        r = requests.post(
+            config.LLM_URL,
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": config.LLM_MODEL, "messages": messages, "temperature": temperature},
+            timeout=timeout,
+        )
+        if r.status_code == 429:
+            # Rate limited: wait as long as the server asks, or back off exponentially.
+            retry_after = r.headers.get("retry-after")
+            wait = float(retry_after) if retry_after else 5 * 2 ** attempt
+            wait = min(wait, 60)
+            print(f"  Rate limited by Groq, waiting {wait:.0f}s (attempt {attempt + 1}/{MAX_RETRIES}) ...")
+            time.sleep(wait)
+            continue
+        if r.status_code == 401:
+            raise SystemExit("API key rejected (401). Check the key in your .env file.")
+        if r.status_code == 413:
+            raise SystemExit("Request too large (413). Try fewer sources: add  -k 4  to your command.")
+        r.raise_for_status()
+        return (r.json()["choices"][0]["message"]["content"] or "").strip()
+
+    raise SystemExit("Still rate limited after several retries. Wait a few minutes and try again.")
 
 
 def format_sources(hits: list[tuple[float, dict]]) -> str:
@@ -60,6 +74,7 @@ def generate_answer(question: str, hits: list[tuple[float, dict]]) -> str:
     ])
 
 
+@lru_cache(maxsize=1024)
 def rewrite_query(question: str) -> str:
     out = _chat(
         [{"role": "system", "content": REWRITE_PROMPT}, {"role": "user", "content": question}],

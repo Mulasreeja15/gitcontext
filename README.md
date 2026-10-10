@@ -2,30 +2,38 @@
 
 **Ask questions about any Python codebase and get answers grounded in the actual source, with file and line citations.**
 
-GitContext is a retrieval-augmented generation (RAG) system for code. It parses a repository into functions, classes and methods, indexes them with hybrid semantic and keyword search, and answers developer questions like *"How does this library decide whether to follow a redirect?"* by citing the exact code it used.
+GitContext is a retrieval-augmented generation (RAG) system for code. It parses a repository into functions, classes and methods, retrieves the code relevant to a developer's question, and answers questions like *"How does this library decide whether to follow a redirect?"* by citing the exact code it used.
 
-Every retrieval technique in the pipeline was **measured with an evaluation harness**, and only the ones that improved results are on by default.
+Every retrieval technique in the pipeline was **measured on a labelled evaluation set**, and only the ones that improved results are on by default.
 
 ## Results
 
-Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with a labelled question set (12 questions: natural-language questions and exact identifiers).
+Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with **45 labelled questions**: exact identifiers, technical questions, and plain-English questions written the way a developer new to the codebase would ask them.
 
 | Configuration | Recall@1 | Recall@3 | Recall@5 | MRR@10 | Median latency |
 |---|---|---|---|---|---|
-| Vector search only (baseline) | 50% | 58% | 67% | 0.591 | 28 ms |
-| + BM25 hybrid (RRF fusion) | 42% | 50% | 75% | 0.526 | 29 ms |
-| + Test-file down-ranking | 50% | 67% | **100%** | 0.662 | 21 ms |
-| + Cross-encoder rerank (MiniLM) | 42% | 75% | 75% | 0.574 | 1156 ms |
-| + LLM query rewriting (no reranker) | 50% | **92%** | **100%** | **0.697** | 1631 ms |
+| Vector only (baseline) | 60% | 69% | 76% | 0.680 | 17 ms |
+| **Vector + test down-ranking** (default) | **69%** | 76% | **91%** | **0.750** | **16 ms** |
+| Hybrid (vector + BM25, RRF) | 42% | 62% | 73% | 0.561 | 17 ms |
+| Hybrid + test down-ranking | 53% | 78% | 89% | 0.679 | 18 ms |
+| Hybrid + test down-ranking + cross-encoder rerank | 44% | 69% | 82% | 0.592 | 1070 ms |
+| **Vector + test down-ranking + LLM rewrite** (`--rewrite`) | 67% | 84% | 93% | **0.768** | ~1.3 s |
+| Hybrid + test down-ranking + LLM rewrite | 56% | **87%** | **96%** | 0.725 | ~1.3 s |
 
-**Recall@5 improved from 67% to 100%, and MRR from 0.591 to 0.697.**
+**Recall@5 improved from 76% to 91% with no added latency, and up to 96% with LLM query rewriting.**
 
 ### Key findings
 
-- **Test files were the main failure mode.** Test names like `test_HTTP_302_ALLOW_REDIRECT_GET` share vocabulary with questions, so they outranked the real implementation. Down-ranking tests was the single biggest win (Recall@5 75% to 100%) at almost no latency cost.
-- **BM25 alone made things worse before it made them better.** Keyword search amplified the test-file problem (test files are full of query words). Combined with test down-ranking, it surfaced exact identifiers that vector search missed.
-- **General-purpose rerankers hurt code retrieval.** `ms-marco-MiniLM-L-6-v2` lowered MRR to 0.574 and added 1.2 s per query. The larger `bge-reranker-base` was worse (MRR 0.503) and 6x slower. Both are trained on web search data, so the problem is domain mismatch, not model size. Reranking is kept as an optional `--rerank` flag.
-- **LLM query rewriting helps natural-language questions most.** It turns "how does requests guess the encoding of a response" into code-like search terms (rank 4 to 2), but can add noise to queries that are already exact identifiers.
+- **Test files were the main failure mode.** Test names like `test_HTTP_302_ALLOW_REDIRECT_GET` share vocabulary with questions, so they outranked the real implementation. Down-ranking tests was the single biggest win (Recall@5 76% to 91%, MRR 0.680 to 0.750) at zero latency cost.
+- **BM25 hurts on natural-language questions.** Adding keyword search lowered MRR in every pairing (for example 0.750 to 0.679), because plain-English questions share few words with code. On an early 12-question set, hybrid search looked best; the larger, harder set reversed that conclusion.
+- **BM25 becomes useful after LLM query rewriting.** Rewritten queries contain code identifiers, so keyword matching starts to work: Recall@5 rose from 93% to 96%, at some cost to top-1 precision.
+- **LLM query rewriting rescues paraphrased questions.** "What stops it from bouncing between pages forever?" was not found by any other method; with rewriting it ranked first. Rewriting gave the best MRR (0.768) at the cost of one LLM call (~1.3 s).
+- **General-purpose rerankers hurt code retrieval.** `ms-marco-MiniLM-L-6-v2` lowered MRR to 0.592 and added about 1 s per query; the larger `bge-reranker-base` was worse and 6x slower. Both are trained on web search data, so the problem is domain mismatch, not model size.
+
+### Known limitations
+
+- **Vocabulary gap.** "How can I run my own code every time a response comes back?" fails in every configuration: the answer is *hooks*, a word the question never uses.
+- **Implicit behavior.** "Why is a password being sent even though I never passed one?" (the answer is automatic `.netrc` lookup) is rarely found, because nothing in the question points to that mechanism.
 
 ## Architecture
 
@@ -35,15 +43,15 @@ flowchart LR
     B --> C["bge-small embeddings"]
     C --> D[("Qdrant vector DB")]
 
-    Q["Developer question"] --> R["LLM query rewrite<br/>(optional)"]
+    Q["Developer question"] --> R["LLM query rewrite<br/>(optional, --rewrite)"]
     R --> V["Vector search"]
-    R --> K["BM25 keyword search<br/>code-aware tokenizer"]
+    R --> K["BM25 keyword search<br/>(optional, --bm25)"]
     D --> V
     D --> K
     V --> F["Reciprocal Rank Fusion"]
     K --> F
     F --> T["Test-file down-ranking"]
-    T --> X["Cross-encoder rerank<br/>(optional, off by default)"]
+    T --> X["Cross-encoder rerank<br/>(optional, --rerank)"]
     X --> L["Groq GPT-OSS 120B<br/>answer with citations"]
 ```
 
@@ -51,8 +59,8 @@ flowchart LR
 
 1. **Syntax-aware chunking.** Python files are parsed with tree-sitter and split at real boundaries: one chunk per function, class or method. Large classes become a summary chunk (signature, docstring, method list) plus one chunk per method. Each chunk carries a context header (`File: sessions.py / Method: SessionRedirectMixin.resolve_redirects`) so exact names are easy to match.
 2. **Embedding and storage.** Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in a local Qdrant collection with file path, line numbers and symbol names as metadata.
-3. **Hybrid retrieval.** Each query runs through vector search and BM25. The BM25 tokenizer is code-aware: it keeps whole identifiers and also splits `snake_case` and `camelCase`, so `resolve_redirects` matches a question about "redirects".
-4. **Rank fusion and test handling.** Rankings are merged with Reciprocal Rank Fusion, and test files are down-weighted, because "how does X work" questions should surface implementation code.
+3. **Retrieval.** Each question is embedded and matched against the code. Optionally, an LLM first rewrites the question into code vocabulary, and BM25 keyword search (with a code-aware tokenizer that splits `snake_case` and `camelCase`) runs alongside vector search, merged with Reciprocal Rank Fusion.
+4. **Test-file down-ranking.** Test files are down-weighted, because "how does X work" questions should surface implementation code.
 5. **Grounded answers.** The top chunks are sent to an LLM with strict rules: answer only from the numbered sources, cite them inline, and say so when the answer isn't there.
 
 ## Quick start
@@ -84,9 +92,9 @@ python main.py search "where is the timeout handled"
 python main.py ask "How does requests decide whether to follow a redirect?"
 
 # Optional retrieval flags
-python main.py ask "..." --rewrite          # LLM query rewriting
+python main.py ask "..." --rewrite          # LLM query rewriting (best accuracy)
+python main.py ask "..." --rewrite --bm25   # add keyword search (best Recall@5)
 python main.py ask "..." --rerank           # cross-encoder reranking
-python main.py search "..." --no-bm25       # vector search only
 python main.py search "..." --include-tests # don't down-rank tests
 ```
 
@@ -96,9 +104,10 @@ python main.py search "..." --include-tests # don't down-rank tests
 python evaluate.py                  # ablation over all retrieval configurations
 python evaluate.py --with-rewrite   # include LLM query rewriting
 python evaluate.py --details        # rank of the first correct result per question
+python check_labels.py              # verify every expected answer exists in the index
 ```
 
-Questions and expected answers live in `eval/questions.jsonl`. Each expected answer is a file and symbol, such as `src/requests/sessions.py::resolve_redirects`. Results are written to `eval/results.md`.
+Questions and expected answers live in `eval/questions.jsonl`. Each expected answer is a file and symbol, such as `src/requests/sessions.py::resolve_redirects`. Results are written to `eval/results.md`. The Groq client retries automatically with backoff when rate-limited, and rewrites are cached so each question is rewritten once per run.
 
 ## Project structure
 
@@ -107,11 +116,12 @@ gitcontext/
 ├── chunker.py     # tree-sitter syntax-aware chunking
 ├── ingest.py      # clone/walk repositories
 ├── store.py       # embeddings + Qdrant vector store
-├── retriever.py   # hybrid search, RRF, test down-ranking, reranking
-├── answer.py      # LLM answers and query rewriting
+├── retriever.py   # vector/BM25 retrieval, RRF, test down-ranking, reranking
+├── answer.py      # LLM answers, query rewriting, rate-limit retries
 └── config.py      # all settings in one place
 main.py            # CLI: index, search, ask
 evaluate.py        # evaluation harness (Recall@K, MRR, latency)
+check_labels.py    # validates the evaluation labels
 eval/              # labelled questions and results
 ```
 
@@ -122,7 +132,8 @@ Python · tree-sitter · sentence-transformers · Qdrant · rank-bm25 · Groq (G
 ## Roadmap
 
 - [x] Syntax-aware chunking, embeddings, vector search, cited answers
-- [x] Hybrid BM25 + vector retrieval, RRF, test down-ranking, reranker and query-rewrite experiments
-- [ ] Larger evaluation set (50+ questions) and LLM-judged answer faithfulness
+- [x] Hybrid retrieval, RRF, test down-ranking, reranker and query-rewrite experiments
+- [x] 45-question evaluation set with a full ablation study
+- [ ] LLM-judged answer correctness and citation faithfulness
 - [ ] FastAPI backend, web interface, incremental re-indexing from git diffs
 - [ ] Commit history and pull request discussions as additional sources

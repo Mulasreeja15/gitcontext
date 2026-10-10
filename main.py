@@ -48,7 +48,7 @@ def cmd_index(args):
 
 def options_from(args) -> RetrievalOptions:
     return RetrievalOptions(
-        bm25=not args.no_bm25,
+        bm25=args.bm25,
         rerank=args.rerank,
         penalize_tests=not args.include_tests,
         rewrite=args.rewrite,
@@ -91,7 +91,7 @@ def cmd_ask(args):
 
 def add_retrieval_flags(p):
     p.add_argument("-k", type=int, default=6, help="number of results")
-    p.add_argument("--no-bm25", action="store_true", help="vector search only")
+    p.add_argument("--bm25", action="store_true", help="add BM25 keyword search (hybrid)")
     p.add_argument("--no-rerank", action="store_true", help="skip the reranker")
     p.add_argument("--include-tests", action="store_true", help="don't down-rank tests")
     p.add_argument("--rerank", action="store_true", help="use the cross-encoder reranker")

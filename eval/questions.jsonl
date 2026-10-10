@@ -10,3 +10,38 @@
 {"question": "how are proxy settings taken from environment variables", "expected": ["src/requests/utils.py::get_environ_proxies", "src/requests/sessions.py::merge_environment_settings", "src/requests/utils.py::resolve_proxies"]}
 {"question": "how is a file uploaded as multipart form data", "expected": ["src/requests/models.py::RequestEncodingMixin._encode_files"]}
 {"question": "how are connection retries configured", "expected": ["src/requests/adapters.py::HTTPAdapter.__init__"]}
+
+{"question": "How is a JSON response body parsed?", "expected": ["src/requests/models.py::Response.json"]}
+{"question": "When does raise_for_status raise an error?", "expected": ["src/requests/models.py::Response.raise_for_status"]}
+{"question": "How is a response body streamed in chunks?", "expected": ["src/requests/models.py::Response.iter_content"]}
+{"question": "How are header names made case-insensitive?", "expected": ["src/requests/structures.py::CaseInsensitiveDict"]}
+{"question": "How does requests verify SSL certificates?", "expected": ["src/requests/adapters.py::HTTPAdapter.cert_verify"]}
+{"question": "Why is the Authorization header removed when redirecting to another host?", "expected": ["src/requests/sessions.py::rebuild_auth", "src/requests/sessions.py::should_strip_auth"]}
+{"question": "How does the HTTP method change after a 303 redirect?", "expected": ["src/requests/sessions.py::rebuild_method"]}
+{"question": "How are session settings merged with per-request settings?", "expected": ["src/requests/sessions.py::merge_setting", "src/requests/sessions.py::Session.prepare_request"]}
+{"question": "Where is the default User-Agent header set?", "expected": ["src/requests/utils.py::default_user_agent", "src/requests/utils.py::default_headers"]}
+{"question": "How are credentials read from a .netrc file?", "expected": ["src/requests/utils.py::get_netrc_auth"]}
+{"question": "How does digest authentication build its header?", "expected": ["src/requests/auth.py::HTTPDigestAuth.build_digest_header"]}
+{"question": "How does a session choose the transport adapter for a URL?", "expected": ["src/requests/sessions.py::Session.get_adapter"]}
+{"question": "How are response hooks called?", "expected": ["src/requests/hooks.py::dispatch_hook"]}
+{"question": "How is the length of a request body calculated?", "expected": ["src/requests/utils.py::super_len", "src/requests/models.py::PreparedRequest.prepare_content_length"]}
+{"question": "How are cookies from a response saved into the cookie jar?", "expected": ["src/requests/cookies.py::extract_cookies_to_jar"]}
+{"question": "How does requests decide whether a host should bypass the proxy?", "expected": ["src/requests/utils.py::should_bypass_proxies"]}
+{"question": "How are Link headers in a response parsed?", "expected": ["src/requests/models.py::Response.links", "src/requests/utils.py::parse_header_links"]}
+{"question": "Which exception is raised when a URL has no scheme like http?", "expected": ["src/requests/exceptions.py::MissingSchema"]}
+{"question": "prepare_body", "expected": ["src/requests/models.py::PreparedRequest.prepare_body"]}
+{"question": "Session.send", "expected": ["src/requests/sessions.py::Session.send"]}
+
+{"question": "Why do I lose my login credentials when the server sends me to a different website?", "expected": ["src/requests/sessions.py::rebuild_auth", "src/requests/sessions.py::should_strip_auth"]}
+{"question": "My request hangs forever, how does it give up after some seconds?", "expected": ["src/requests/adapters.py::HTTPAdapter.send"]}
+{"question": "How does it reuse the same network connection across many requests?", "expected": ["src/requests/adapters.py::HTTPAdapter.init_poolmanager", "src/requests/adapters.py::HTTPAdapter.get_connection"]}
+{"question": "Why is the text of my response showing weird characters?", "expected": ["src/requests/models.py::Response.text", "src/requests/models.py::Response.apparent_encoding", "src/requests/utils.py::get_encoding_from_headers"]}
+{"question": "How is my dictionary turned into form data sent to the server?", "expected": ["src/requests/models.py::RequestEncodingMixin._encode_params", "src/requests/models.py::PreparedRequest.prepare_body"]}
+{"question": "What stops it from bouncing between pages forever?", "expected": ["src/requests/sessions.py::resolve_redirects", "src/requests/exceptions.py::TooManyRedirects"]}
+{"question": "How does it pick a different proxy for secure and normal websites?", "expected": ["src/requests/utils.py::select_proxy"]}
+{"question": "Where does it figure out how big an uploaded file is?", "expected": ["src/requests/utils.py::super_len"]}
+{"question": "How can I run my own code every time a response comes back?", "expected": ["src/requests/hooks.py::dispatch_hook", "src/requests/models.py::RequestHooksMixin.register_hook"]}
+{"question": "Why is a password being sent even though I never passed one?", "expected": ["src/requests/utils.py::get_netrc_auth", "src/requests/sessions.py::Session.prepare_request"]}
+{"question": "How do I make it accept a server with a self-signed certificate?", "expected": ["src/requests/adapters.py::HTTPAdapter.cert_verify", "src/requests/sessions.py::merge_environment_settings"]}
+{"question": "How are spaces and special characters in a web address made safe?", "expected": ["src/requests/utils.py::requote_uri", "src/requests/models.py::PreparedRequest.prepare_url"]}
+{"question": "Why does my POST become a GET after the server redirects me?", "expected": ["src/requests/sessions.py::rebuild_method"]}
