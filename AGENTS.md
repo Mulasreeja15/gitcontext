@@ -4,7 +4,7 @@
 
 GitContext is a retrieval-augmented generation (RAG) system for Python codebases. It parses code with tree-sitter into function, class, and method chunks with context headers containing file paths and symbol names. Small classes stay intact; large classes produce a summary plus method chunks. Oversized chunks are split into line windows. Module-level code and Markdown/RST/text documentation are also indexed.
 
-Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in local Qdrant at `data/qdrant`, in the `gitcontext` collection. The default retrieval pipeline uses vector search and test-file down-ranking. Optional BM25 hybrid retrieval (`--bm25`) uses a code-aware tokenizer and Reciprocal Rank Fusion (RRF); optional cross-encoder reranking (`--rerank`) uses `cross-encoder/ms-marco-MiniLM-L-6-v2`. Optional LLM query rewriting (`--rewrite`, subject to the CLI limitation below) retrieves with both the original and rewritten query and fuses their rankings.
+Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in local Qdrant at `data/qdrant`, in the `gitcontext` collection. The default retrieval pipeline uses vector search and test-file down-ranking. Optional BM25 hybrid retrieval (`--bm25`) uses a code-aware tokenizer and Reciprocal Rank Fusion (RRF); optional cross-encoder reranking (`--rerank`) uses `cross-encoder/ms-marco-MiniLM-L-6-v2`. Optional LLM query rewriting (`--rewrite`) retrieves with both the original and rewritten query and fuses their rankings.
 
 Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answers use numbered source excerpts with file paths and line ranges, cite claims inline with `[n]`, and must acknowledge when the supplied sources do not contain the answer.
 
@@ -50,8 +50,6 @@ The CLI commands are `python main.py index/search/ask`, `python evaluate.py --wi
 ```
 
 `index` also accepts a local repository directory and resets the collection, so index `psf/requests` before running its evaluation or label checks. `search` retrieves chunks; `ask` additionally calls Groq. `-k` controls the number of returned chunks (default 6). `--include-tests` disables test down-ranking. Rewriting and answering require credentials loaded by python-dotenv; never inspect the credential file or print keys.
-
-**Current CLI limitation:** `main.py` reads `args.rewrite` in `options_from()` but does not register `--rewrite` or set a default for it. Consequently, current `search`/`ask` invocations can fail with an attribute error, and `--rewrite` is rejected by argparse. The documented rewrite feature is implemented in `Retriever` and available through `evaluate.py --with-rewrite`. The CLI also accepts `--no-rerank` but does not use that value. Keep these discrepancies in mind when asked to work on the CLI; do not assume the README examples all run successfully as written.
 
 ## Published evaluation results
 

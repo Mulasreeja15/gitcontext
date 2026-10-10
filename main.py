@@ -5,8 +5,9 @@
   python main.py ask "question" [options]
 
 Retrieval options:
-  --no-bm25        vector search only (no keyword search)
-  --no-rerank      skip the cross-encoder reranker
+  -k              number of results (default 6)
+  --bm25          add BM25 keyword search (hybrid)
+  --rerank        use the cross-encoder reranker
   --include-tests  don't down-rank test files
   --rewrite        let the LLM rewrite the query first
 """
@@ -90,12 +91,12 @@ def cmd_ask(args):
 
 
 def add_retrieval_flags(p):
+    """Register the shared search and ask retrieval options."""
     p.add_argument("-k", type=int, default=6, help="number of results")
     p.add_argument("--bm25", action="store_true", help="add BM25 keyword search (hybrid)")
-    p.add_argument("--no-rerank", action="store_true", help="skip the reranker")
     p.add_argument("--include-tests", action="store_true", help="don't down-rank tests")
     p.add_argument("--rerank", action="store_true", help="use the cross-encoder reranker")
-    
+    p.add_argument("--rewrite", action="store_true", help="let the LLM rewrite the query first")
 
 
 def main():
