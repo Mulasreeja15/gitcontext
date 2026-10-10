@@ -25,7 +25,9 @@ Return ONLY the query, on one line, with no explanation and no quotes."""
 MAX_RETRIES = 6
 
 
-def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120) -> str:
+def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
+          model: str | None = None) -> str:
+    """Call Groq with shared rate-limit retries and an optional model override."""
     key = os.getenv(config.LLM_KEY_NAME)
     if not key:
         raise SystemExit(f"Missing {config.LLM_KEY_NAME}. Add it to your .env file.")
@@ -34,7 +36,7 @@ def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120) ->
         r = requests.post(
             config.LLM_URL,
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": config.LLM_MODEL, "messages": messages, "temperature": temperature},
+            json={"model": model or config.LLM_MODEL, "messages": messages, "temperature": temperature},
             timeout=timeout,
         )
         if r.status_code == 429:

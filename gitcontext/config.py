@@ -29,6 +29,10 @@ TEST_RERANK_PENALTY = 3.0    # subtracted from the reranker score for test files
 # LLM that writes answers and rewrites queries (Groq, free tier)
 LLM_URL = "https://api.groq.com/openai/v1/chat/completions"
 LLM_MODEL = "openai/gpt-oss-120b"
+JUDGE_MODEL = LLM_MODEL  # a different judge model reduces self-preference bias
+JUDGE_CACHE_PATH = Path("eval/judge_cache.jsonl")
+JUDGE_RESULTS_PATH = Path("eval/judge_results.md")
+JUDGE_K = 6
 LLM_KEY_NAME = "GROQ_API_KEY"
 
 MAX_CHUNK_CHARS = 4000      # oversized functions/sections get split

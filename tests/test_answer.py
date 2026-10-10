@@ -34,6 +34,13 @@ def test_chat_success():
     reply.raise_for_status.assert_called_once()
 
 
+def test_chat_model_override():
+    with patch.object(answer.requests, 'post', return_value=response()) as post:
+        answer._chat([], temperature=0.0, model='different-judge')
+    assert post.call_args.kwargs['json']['model'] == 'different-judge'
+    assert post.call_args.kwargs['json']['temperature'] == 0.0
+
+
 @pytest.mark.parametrize('headers,wait', [({'retry-after': '2'}, 2), ({}, 5), ({'retry-after': '120'}, 60)])
 def test_chat_retries_429_then_succeeds(headers, wait):
     limited, success = response(429, headers=headers), response(content='ok')

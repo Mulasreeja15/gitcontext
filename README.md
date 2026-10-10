@@ -109,6 +109,29 @@ python check_labels.py              # verify every expected answer exists in the
 
 Questions and expected answers live in `eval/questions.jsonl`. Each expected answer is a file and symbol, such as `src/requests/sessions.py::resolve_redirects`. Results are written to `eval/results.md`. The Groq client retries automatically with backoff when rate-limited, and rewrites are cached so each question is rewritten once per run.
 
+### Answer-quality evaluation
+
+Answer quality complements the retrieval evaluation:
+
+```powershell
+.\.venv\Scripts\python.exe judge.py --limit 3
+.\.venv\Scripts\python.exe judge.py
+.\.venv\Scripts\python.exe judge.py --rewrite
+.\.venv\Scripts\python.exe judge.py --no-cache
+```
+
+The judge generates answers from six retrieved sources and scores correctness
+against chunks matching the expected labels, plus faithfulness to the sources
+the answer actually received. Correct-source citations are checked in Python.
+Summary and per-question scores, along with the five lowest-scoring cases, are
+printed and saved to `eval/judge_results.md`. Answers and judgments are cached
+in `eval/judge_cache.jsonl`, including partial runs, by question, configuration,
+and model choices. `--no-cache` bypasses both cache reads and writes; use it
+after reindexing or changing prompts. `--rewrite` evaluates both the default
+and rewrite configurations. These commands call Groq and require configured
+credentials. `JUDGE_MODEL` defaults to the answer model; using a different
+judge model can reduce self-preference bias.
+
 ## Project structure
 
 ```

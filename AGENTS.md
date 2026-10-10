@@ -19,6 +19,8 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/store.py` | `Embedder` loads sentence-transformers and produces normalized embeddings; `VectorStore` resets/upserts the Qdrant collection, searches by cosine similarity, and scrolls payloads for BM25. |
 | `gitcontext/retriever.py` | Retrieval options/results, identifier tokenization, test-file detection, lazy BM25/reranker setup, vector and keyword rankings, RRF, test penalties, query rewriting, reranking, and latency measurements. |
 | `gitcontext/answer.py` | Groq `_chat()` client with 429 retries, source formatting, cited-answer prompts, and cached query rewriting. |
+| `gitcontext/judge.py` | Answer-quality judge, JSON validation/retry, gold context, deterministic citation checks, resumable JSONL cache, and Markdown reports. |
+| `judge.py` | Answer-quality evaluation CLI: default retrieval, optional `--rewrite`, `--limit N`, and `--no-cache`; writes `eval/judge_results.md`. |
 | `main.py` | CLI entry point for `index`, `search`, and `ask`; displays ranked sources and timings. Indexing replaces the existing collection. |
 | `evaluate.py` | Ablation harness: evaluates first relevant ranks up to 10, Recall@1/3/5, MRR@10, and median latency; writes summary and per-question ranks to `eval/results.md`. |
 | `check_labels.py` | Checks that every expected evaluation target matches a chunk in the current index. |
