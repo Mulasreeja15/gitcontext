@@ -126,13 +126,13 @@ the entire shared folder, even across different collections.
 Indexing rejects repositories above 200 MB on disk (including Git history) or
 20,000 chunks; limits are configured in `gitcontext/config.py` and checked before
 embedding or replacing stored chunks. Incremental updates apply the chunk limit
-to the resulting index. The API and web UI currently serve the default repo;
-repository selection is available through the core and CLI.
+to the resulting index. The API and web UI also support repository selection.
 
 ## API service
 
 Run from the repository root with an existing index. The service binds to
-`127.0.0.1` and keeps one Retriever per process; embedding models load at startup,
+`127.0.0.1` and keeps one shared QdrantClient and embedding model per process,
+with separate Retriever/BM25/payload caches per repository. Models load at startup,
 and optional BM25/reranking components load on first use. Stop the server before
 reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
 
@@ -143,6 +143,37 @@ reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
 Open `http://127.0.0.1:8000/` for the built-in web UI. Enter a question or use
 Search only to retrieve code without an LLM answer. Citations jump to collapsible
 source cards. Rewrite, BM25, reranking, and test inclusion are optional toggles.
+The header picker shows indexed repository names and chunk counts. Expand
+**Add repository**, enter `https://github.com/pallets/click`, and press **Index**.
+The page polls live cloning/chunking/embedding progress and selects the new repo
+when indexing finishes. Ask/Search are disabled for the repo being indexed;
+other indexes remain available between model batches. Use **Search only** to
+try the new repo without calling Groq. If Click is already indexed, try
+`https://github.com/pallets/flask` to add another. Reindexing an existing URL
+rebuilds only that repository's collection.
+
+`POST /index` accepts `{"repo_url":"https://github.com/<owner>/<name>"}` and
+returns 202. Only public HTTPS GitHub repository URLs are accepted; credentials,
+query strings, fragments, and subpaths are rejected with 422. New repositories
+are cloned with `--depth 1` in a background thread. Shallow clones have commit
+metadata only for available history. Existing checkouts are reused. The service
+accepts one indexing/update/removal job at a time (409 while busy).
+
+`GET /index/status` returns `state` (`idle`, `cloning`, `chunking`, `embedding`,
+`done`, `error`), `repo`, `progress` (such as `812/2400 chunks`), and `error`.
+Job status is in memory and resets on server restart. `GET /repos` returns a list
+of repo identities, chunk counts, indexed commits, staleness, and optional
+language warnings. `DELETE /repos/{owner}/{name}` removes only that index/state
+and cached retrieval data, preserving source checkouts. Every storage operation
+uses the server's shared client; deletion never closes it. Shutdown waits for an
+active indexing job before closing the client.
+
+Search, ask, and streaming request bodies accept optional `repo` (default
+`psf/requests`), for example `{"query":"How are arguments parsed?","repo":"pallets/click"}`.
+`GET /health?repo=pallets/click` reports that repository's health. Requests for a
+repo being indexed return 409; empty indexes return 503. Repositories with less
+than 20% Python source files show a language notice; this threshold and filename
+language mapping live in config. Unsupported code is not indexed as Python.
 Repo names and commit freshness come from `data/index_state/psf__requests.json`; older indexes
 show a generic label until reindexed. The header flags stale indexes.
 

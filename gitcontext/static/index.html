@@ -12,8 +12,15 @@
 </style>
 </head>
 <body>
-<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><span><span class="dot"></span><span id="repo-name">Connecting…</span></span><span class="count" id="chunk-count">— chunks</span><span id="stale-notice" class="badge" role="status" hidden>Index is out of date</span></div></div></header>
+<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><label for="repo-picker">Repository</label><select id="repo-picker" class="btn" aria-label="Repository"><option value="">Connecting…</option></select><span class="count" id="chunk-count">— chunks</span><span id="stale-notice" class="badge" role="status" hidden>Index is out of date</span></div></div></header>
 <main>
+<details class="composer" id="add-repository"><summary>Add repository</summary>
+<form id="index-form" style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+<label for="repo-url" class="question-label">Public GitHub repository URL</label>
+<input id="repo-url" type="url" required placeholder="https://github.com/pallets/click" class="btn" style="flex:1;min-width:220px" aria-describedby="index-progress">
+<button id="index-button" class="btn primary" type="submit">Index</button>
+</form><p id="index-progress" role="status" aria-live="polite" class="hint">Add a Python repository to get started.</p></details>
+<p id="language-warning" class="hint" role="status" hidden></p>
 <div class="eyebrow">Your code, with context</div>
 <h1>Ask your codebase.</h1>
 <p class="intro">Find the implementation. Understand the behavior. Follow the sources.</p>
@@ -40,6 +47,61 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let busy = false, answerText = '', sourceCount = 0, scheduled = false;
+let selectedRepo = '', repoRows = [], indexJob = {state:'idle', repo:null}, completedJob = null, pollingIndex = false;
+const indexing = () => ['cloning','chunking','embedding'].includes(indexJob.state);
+function updateButtons() {
+  const disabled = busy || !selectedRepo || (indexing() && indexJob.repo === selectedRepo);
+  $('ask-button').disabled = disabled; $('search-button').disabled = disabled;
+  $('repo-picker').disabled = busy;
+  $('index-button').disabled = indexing();
+}
+function selectedMetadata() {
+  const row = repoRows.find(item => item.repo === selectedRepo);
+  $('chunk-count').textContent = (row ? row.chunk_count.toLocaleString() : '0') + ' chunks';
+  $('stale-notice').hidden = !row || !row.stale;
+  $('language-warning').textContent = row?.language_warning || '';
+  $('language-warning').hidden = !row?.language_warning;
+  updateButtons();
+}
+async function loadRepos(preferred) {
+  const previous = selectedRepo;
+  const response = await checked(await fetch('/repos'));
+  repoRows = await response.json();
+  if (preferred && repoRows.some(row => row.repo === preferred)) selectedRepo = preferred;
+  if (!repoRows.some(row => row.repo === selectedRepo)) selectedRepo = repoRows[0]?.repo || '';
+  $('repo-picker').replaceChildren();
+  if (!repoRows.length) $('repo-picker').append(element('option', 'No indexed repositories'));
+  for (const row of repoRows) {
+    const option = element('option', row.repo + ' · ' + row.chunk_count.toLocaleString() + ' chunks');
+    option.value = row.repo; $('repo-picker').append(option);
+  }
+  $('repo-picker').value = selectedRepo; selectedMetadata();
+  if (previous && previous !== selectedRepo) {
+    $('results').hidden = true; $('welcome').hidden = false; status('');
+  }
+}
+async function pollIndex() {
+  if (pollingIndex) return;
+  pollingIndex = true;
+  try {
+    const response = await checked(await fetch('/index/status'));
+    indexJob = await response.json(); updateButtons();
+    if (indexing()) {
+      completedJob = null;
+      $('index-progress').textContent = indexJob.repo + ': ' + indexJob.state + (indexJob.progress ? ' · ' + indexJob.progress : '…');
+      $('index-progress').style.color = '';
+    } else if (indexJob.state === 'done' && completedJob !== indexJob.repo) {
+      // Wait until an active answer finishes before switching its source context.
+      if (busy) return;
+      await loadRepos(indexJob.repo); completedJob = indexJob.repo;
+      $('index-progress').textContent = 'Indexed ' + indexJob.repo + (indexJob.progress ? ' · ' + indexJob.progress : '');
+    } else if (indexJob.state === 'error') {
+      $('index-progress').textContent = indexJob.error || 'Indexing failed. Please try again.';
+      $('index-progress').style.color = 'var(--error)';
+    }
+  } catch (error) { $('index-progress').textContent = error.message; }
+  finally {pollingIndex = false;}
+}
 const emptyMessage = 'Index is empty: run python main.py index <repo>';
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -140,17 +202,14 @@ function sources(hits) {
 }
 async function health() {
   try {
-    const response = await fetch('/health'); if (!response.ok) throw new Error('Server unavailable');
-    const data = await response.json(); $('repo-name').textContent = data.repo_name || 'Repository index';
-    $('repo-name').title = data.repo_name ? '' : 'Older indexes have no repository metadata. Reindex to show its name.';
-    $('chunk-count').textContent = Number(data.chunks_indexed).toLocaleString() + ' chunks';
-    $('stale-notice').hidden = !data.stale || !data.chunks_indexed;
-    if (!data.chunks_indexed) status(emptyMessage, false, true);
-  } catch (error) { $('repo-name').textContent = 'Disconnected'; status('Cannot reach GitContext. Check that the server is running.', false, true); }
+    await loadRepos();
+    if (!selectedRepo) status(emptyMessage, false, true);
+  } catch (error) {status('Cannot reach GitContext. Check that the server is running.', false, true);}
 }
 async function checked(response) {
   if (response.ok) return response;
   let detail = ''; try {detail = (await response.json()).detail || '';} catch (_) {}
+  if (Array.isArray(detail)) detail = detail.map(item => item.msg).join('; ');
   if (response.status === 429) throw new Error('Groq is rate limiting, retrying... Please try again shortly.');
   if (typeof detail === 'string' && detail.toLowerCase().includes('index is empty')) throw new Error(emptyMessage);
   throw new Error(typeof detail === 'string' && detail ? detail : 'Request failed (' + response.status + '). Please try again.');
@@ -185,14 +244,14 @@ async function consumeStream(response) {
   } finally {await reader.cancel().catch(() => {}); reader.releaseLock();}
 }
 async function submit(searchOnly) {
-  if (busy) return;
+  if (busy || !selectedRepo || (indexing() && indexJob.repo === selectedRepo)) return;
   const query = $('query').value.trim(); if (!query) {status('Enter a question to get started.', false, true); $('query').focus(); return;}
-  busy = true; $('ask-button').disabled = true; $('search-button').disabled = true;
+  busy = true; updateButtons();
   $('question-form').setAttribute('aria-busy', 'true');
   answerText = ''; sourceCount = 0; $('answer').replaceChildren(); $('sources').replaceChildren(); $('timings').replaceChildren();
   $('results').hidden = false; $('welcome').hidden = true; $('answer-panel').hidden = false;
   $('answer-title').textContent = searchOnly ? 'Search results' : 'Answer'; status('Finding relevant code…', true);
-  const body = {query, k:6}; for (const id of ['rewrite','bm25','rerank','include_tests']) body[id] = $(id).checked;
+  const body = {query, k:6, repo:selectedRepo}; for (const id of ['rewrite','bm25','rerank','include_tests']) body[id] = $(id).checked;
   try {
     const response = await checked(await fetch(searchOnly ? '/search' : '/ask/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}));
     if (searchOnly) {
@@ -201,12 +260,31 @@ async function submit(searchOnly) {
       status('Search complete.');
     } else await consumeStream(response);
   } catch (error) {status(error.message || 'Something went wrong. Please try again.', false, true);}
-  finally {busy = false; $('ask-button').disabled = false; $('search-button').disabled = false; $('question-form').removeAttribute('aria-busy');}
+  finally {busy = false; updateButtons(); $('question-form').removeAttribute('aria-busy');}
 }
+$('repo-picker').addEventListener('change', () => {
+  selectedRepo = $('repo-picker').value; selectedMetadata();
+  $('results').hidden = true; $('welcome').hidden = false; status('');
+});
+$('index-form').addEventListener('submit', async event => {
+  event.preventDefault(); if (indexing()) return;
+  $('index-button').disabled = true;
+  try {
+    const response = await checked(await fetch('/index', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({repo_url:$('repo-url').value.trim()})}));
+    indexJob = await response.json(); completedJob = null;
+    $('index-progress').style.color = '';
+    $('index-progress').textContent = indexJob.repo + ': cloning…'; updateButtons();
+    await pollIndex();
+  } catch (error) { $('index-progress').textContent = error.message; $('index-progress').style.color = 'var(--error)'; updateButtons(); }
+});
 $('question-form').addEventListener('submit', event => {event.preventDefault(); submit(false);});
 $('search-button').addEventListener('click', () => submit(true));
 $('query').addEventListener('keydown', event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); $('question-form').requestSubmit();}});
 health();
+updateButtons();
+pollIndex();
+setInterval(pollIndex, 1500);
 setInterval(() => {if (!busy) health();}, 30000);
 </script>
 </body>

@@ -82,9 +82,9 @@ class RetrievalResult:
 
 
 class Retriever:
-    def __init__(self, repo: str | None = None):
-        self.embedder = Embedder()
-        self.store = VectorStore(repo)
+    def __init__(self, repo: str | None = None, *, client=None, embedder=None):
+        self.embedder = embedder if embedder is not None else Embedder()
+        self.store = VectorStore(repo, client=client)
         self._payloads: dict[str, dict] = {}
         self._bm25 = None
         self._bm25_ids: list[str] = []

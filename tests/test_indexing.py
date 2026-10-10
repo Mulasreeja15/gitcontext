@@ -237,3 +237,14 @@ def test_incremental_limit_preserves_index(repo, resources, monkeypatch):
     embedder.encode.assert_not_called()
     assert store.all_payloads() == old_payloads
     assert indexing.load_state() == state
+
+
+def test_full_index_progress_hooks(repo, resources):
+    from threading import RLock
+    store, embedder = resources
+    progress = Mock()
+    indexing.full_index(str(repo), store=store, embedder=embedder,
+                        progress=progress, write_lock=RLock())
+    assert [call.args for call in progress.call_args_list] == [
+        ('chunking', ''), ('embedding', '0/4 chunks')]
+    assert store.count() == 4

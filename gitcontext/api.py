@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from queue import Queue
 from contextlib import asynccontextmanager
-from threading import Lock, Event, Thread
+from threading import Lock, RLock, Event, Thread
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -14,11 +15,14 @@ from pydantic import BaseModel, Field, field_validator
 from . import answer, config
 from .indexing import index_status, load_state, update_index
 from datetime import date
+from .repositories import repo_id, list_repos, remove_repo
+from .service_indexing import github_repo, index_repository, language_profile
 
 
 class SearchRequest(BaseModel):
     """Shared retrieval parameters for search and both answer routes."""
     query: str
+    repo: str | None = None
     k: int = Field(default=6, ge=1, le=config.API_MAX_K)
     bm25: bool = False
     rerank: bool = False
@@ -26,6 +30,11 @@ class SearchRequest(BaseModel):
     include_tests: bool = False
     since: str | None = None
     author: str | None = Field(default=None, min_length=1)
+
+    @field_validator('repo')
+    @classmethod
+    def repository(cls, value):
+        return repo_id(value) if value is not None else None
 
     @field_validator('since')
     @classmethod
@@ -118,18 +127,162 @@ def create_retriever():
     return Retriever()
 
 
+def create_repo_retriever(identity, base):
+    """Create repo-local caches without opening another client or loading models."""
+    from .retriever import Retriever
+    retriever = Retriever(identity, client=base.store.client, embedder=base.embedder)
+    retriever._reranker = base._reranker
+    return retriever
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load once per process and close Qdrant cleanly on service shutdown."""
     app.state.retriever = create_retriever()
-    app.state.retrieval_lock = Lock()
+    app.state.retrievers = {config.DEFAULT_REPO: app.state.retriever}
+    app.state.retrieval_lock = RLock()
+    app.state.job_lock = Lock()
+    app.state.status_lock = Lock()
+    app.state.index_job = dict(state='idle', repo=None, progress='', error=None)
+    app.state.index_thread = None
     try:
         yield
     finally:
+        if app.state.index_thread is not None:
+            import asyncio
+            await asyncio.to_thread(app.state.index_thread.join)
         app.state.retriever.store.client.close()
 
 
 app = FastAPI(title='GitContext', lifespan=lifespan)
+
+
+class IndexRequest(BaseModel):
+    repo_url: str
+
+    @field_validator('repo_url')
+    @classmethod
+    def valid_url(cls, value):
+        github_repo(value)
+        return value
+
+
+class IndexStatus(BaseModel):
+    state: str
+    repo: str | None
+    progress: str
+    error: str | None
+
+
+class RepoResponse(BaseModel):
+    repo: str
+    chunk_count: int
+    indexed_commit: str | None
+    stale: bool
+    language_warning: str | None = None
+
+
+def _job_status(app):
+    """Read job status independently of long-running model or database work."""
+    with app.state.status_lock:
+        return dict(app.state.index_job)
+
+
+def _repo_retriever(app, identity):
+    """Caller holds retrieval_lock while accessing the repository cache registry."""
+    if identity not in app.state.retrievers:
+        app.state.retrievers[identity] = create_repo_retriever(identity, app.state.retriever)
+    return app.state.retrievers[identity]
+
+
+def _index_job(app, url, identity):
+    """Run one job, publishing status without leaking upstream error details."""
+    def progress(state, value):
+        with app.state.status_lock:
+            app.state.index_job.update(state=state, progress=value)
+    retriever = None
+    try:
+        with app.state.retrieval_lock:
+            retriever = _repo_retriever(app, identity)
+        index_repository(url, identity, retriever, app.state.retrieval_lock, progress)
+        progress('done', _job_status(app)['progress'])
+    except (Exception, SystemExit) as error:
+        message = str(error) if isinstance(error, ValueError) else 'Indexing failed. Check GitHub access, disk space, and the repository URL.'
+        with app.state.status_lock:
+            app.state.index_job.update(state='error', error=message)
+    finally:
+        if retriever is not None:
+            # Publication may have failed after mutating the collection.
+            with app.state.retrieval_lock:
+                retriever.invalidate_index()
+        app.state.job_lock.release()
+
+
+@app.get('/repos', response_model=list[RepoResponse])
+def repos(request: Request):
+    """List repository collections through the one shared storage connection."""
+    with request.app.state.retrieval_lock:
+        rows = list_repos(client=request.app.state.retriever.store.client)
+        for row in rows:
+            state = load_state(row['repo']) or {}
+            profile = state
+            if 'language_warning' not in state and state.get('repo_path'):
+                profile = language_profile(Path(state['repo_path']))
+            row['language_warning'] = profile.get('language_warning')
+        return rows
+
+
+@app.post('/index', status_code=202, response_model=IndexStatus)
+def start_index(body: IndexRequest, request: Request):
+    """Reserve a single background job before returning accepted status."""
+    app = request.app
+    identity = github_repo(body.repo_url)
+    if not app.state.job_lock.acquire(blocking=False):
+        raise HTTPException(409, 'An indexing job is already running.')
+    with app.state.status_lock:
+        app.state.index_job = dict(state='cloning', repo=identity, progress='', error=None)
+    snapshot = _job_status(app)
+    app.state.index_thread = Thread(target=_index_job, args=(app, body.repo_url, identity), daemon=True)
+    try:
+        app.state.index_thread.start()
+    except Exception:
+        app.state.index_thread = None
+        app.state.job_lock.release()
+        with app.state.status_lock:
+            app.state.index_job.update(state='error', error='Could not start indexing job.')
+        raise HTTPException(503, 'Could not start indexing job.') from None
+    return snapshot
+
+
+@app.get('/index/status', response_model=IndexStatus)
+def indexing_status(request: Request):
+    return _job_status(request.app)
+
+
+@app.delete('/repos/{owner}/{name}')
+def delete_repo(owner: str, name: str, request: Request):
+    """Remove one collection and caches, never the checkout or shared client."""
+    try:
+        identity = repo_id(owner + '/' + name)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    app = request.app
+    if not app.state.job_lock.acquire(blocking=False):
+        raise HTTPException(409, 'Wait for the indexing job to finish before removing repositories.')
+    try:
+        with app.state.retrieval_lock:
+            try:
+                remove_repo(identity, client=app.state.retriever.store.client)
+            except ValueError as error:
+                raise HTTPException(404, str(error)) from None
+            removed = app.state.retrievers.pop(identity, None)
+            if removed is not None:
+                removed.invalidate_index()
+            if identity == config.DEFAULT_REPO:
+                app.state.retrievers[identity] = app.state.retriever
+        return {'removed': identity}
+    finally:
+        app.state.job_lock.release()
 
 
 @app.get('/', response_class=FileResponse)
@@ -144,12 +297,20 @@ def _retrieve(body: SearchRequest, request: Request):
     opts = RetrievalOptions(bm25=body.bm25, rerank=body.rerank,
                             penalize_tests=not body.include_tests, rewrite=body.rewrite,
                             since=body.since, author=body.author)
-    retriever = request.app.state.retriever
+    identity = body.repo or config.DEFAULT_REPO
+    job = _job_status(request.app)
+    if job['repo'] == identity and job['state'] in {'cloning', 'chunking', 'embedding'}:
+        raise HTTPException(409, 'This repository is currently indexing.')
     with request.app.state.retrieval_lock:
+        retriever = _repo_retriever(request.app, identity)
         if retriever.store.count() == 0:
             raise HTTPException(503, 'Index is empty. Run main.py index before searching.')
         try:
             retriever.prepare(opts)
+            if opts.rerank:
+                # Reuse the loaded cross-encoder across repo-local caches too.
+                for other in request.app.state.retrievers.values():
+                    other._reranker = retriever._reranker
             return retriever.retrieve(body.query, body.k, opts)
         except (SystemExit, requests.RequestException):
             raise HTTPException(503, 'Query rewriting is unavailable. Check Groq configuration or retry later.') from None
@@ -172,11 +333,15 @@ def _answer_timings(timings: dict, started: float) -> dict[str, float]:
 
 
 @app.get('/health', response_model=HealthResponse)
-def health(request: Request):
+def health(request: Request, repo: str | None = None):
     """Report readiness and count without scanning every payload."""
     with request.app.state.retrieval_lock:
-        count = request.app.state.retriever.store.count()
-        status = index_status()
+        try:
+            identity = repo_id(repo or config.DEFAULT_REPO)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        count = _repo_retriever(request.app, identity).store.count()
+        status = index_status(identity)
     return HealthResponse(chunks_indexed=count, repo_name=status['repo_name'],
                           stale=status['stale'], indexed_commit=status['indexed_commit'])
 
@@ -184,17 +349,22 @@ def health(request: Request):
 @app.post('/reindex', response_model=ReindexResponse)
 def reindex(request: Request):
     """Update in-process using the existing Qdrant connection and loaded embedder."""
-    with request.app.state.retrieval_lock:
-        state = load_state()
-        if not state:
-            raise HTTPException(409, 'No index state. Run main.py index <repo> first.')
-        retriever = request.app.state.retriever
-        try:
-            return update_index(state['repo_path'], store=retriever.store, embedder=retriever.embedder)
-        except (ValueError, SystemExit, OSError):
-            raise HTTPException(409, 'Update failed. Check repository history, working tree, and remote access.') from None
-        finally:
-            retriever.invalidate_index()
+    if not request.app.state.job_lock.acquire(blocking=False):
+        raise HTTPException(409, 'An indexing job is already running.')
+    try:
+        with request.app.state.retrieval_lock:
+            state = load_state()
+            if not state:
+                raise HTTPException(409, 'No index state. Run main.py index <repo> first.')
+            retriever = request.app.state.retriever
+            try:
+                return update_index(state['repo_path'], store=retriever.store, embedder=retriever.embedder)
+            except (ValueError, SystemExit, OSError):
+                raise HTTPException(409, 'Update failed. Check repository history, working tree, and remote access.') from None
+            finally:
+                retriever.invalidate_index()
+    finally:
+        request.app.state.job_lock.release()
 
 
 @app.post('/search', response_model=SearchResponse)

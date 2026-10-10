@@ -147,6 +147,8 @@ def test_home_serves_self_contained_html(service):
     assert response.headers['content-type'].startswith('text/html')
     assert '<title>GitContext' in response.text
     assert 'Search only' in response.text and '/ask/stream' in response.text
+    assert 'id="repo-picker"' in response.text and 'id="index-form"' in response.text
+    assert '/index/status' in response.text and 'repo:selectedRepo' in response.text
     assert 'innerHTML' not in response.text
     assert '<script src=' not in response.text
     retriever.retrieve.assert_not_called()

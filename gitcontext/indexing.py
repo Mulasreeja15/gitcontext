@@ -8,6 +8,7 @@ import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import nullcontext
 
 from . import config
 from .chunker import chunk_file
@@ -181,7 +182,7 @@ def check_chunk_count(count: int) -> None:
         raise ValueError(f'Repository has {count:,} chunks; maximum is {config.MAX_REPO_CHUNKS:,}.')
 
 
-def full_index(source: str, *, store=None, embedder=None, repo=None) -> dict:
+def full_index(source: str, *, store=None, embedder=None, repo=None, progress=None, write_lock=None) -> dict:
     """Replace the collection and record repository identity and embedding model."""
     started = time.perf_counter()
     root = resolve_repo(source)
@@ -190,7 +191,8 @@ def full_index(source: str, *, store=None, embedder=None, repo=None) -> dict:
         from .store import VectorStore
         store = VectorStore(selected)
         try:
-            return full_index(str(root), store=store, embedder=embedder, repo=selected)
+            return full_index(str(root), store=store, embedder=embedder, repo=selected,
+                              progress=progress, write_lock=write_lock)
         finally:
             store.client.close()
     store.repo_id = selected
@@ -198,20 +200,25 @@ def full_index(source: str, *, store=None, embedder=None, repo=None) -> dict:
     head = git(root, 'rev-parse', 'HEAD', optional=True) or None
     if head:
         _clean_tree(root)
+    if progress:
+        progress('chunking', '')
     chunks = annotate_chunks(collect_chunks(root), file_metadata(root, head))
     check_chunk_count(len(chunks))
     if embedder is None:
         from .store import Embedder
         embedder = Embedder()
     removed = store.count()
+    if progress:
+        progress('embedding', f'0/{len(chunks)} chunks')
     vectors = embedder.encode([chunk.embedding_text() for chunk in chunks]) if chunks else []
     _verify_snapshot(root, head)
-    _mark_incomplete(selected)
-    store.reset(embedder.dim)
-    store.upsert(chunks, vectors)
-    state = save_state(root, store, head)
-    if selected == 'psf/requests' and store.client.collection_exists('gitcontext'):
-        store.client.delete_collection('gitcontext')
+    with write_lock if write_lock is not None else nullcontext():
+        _mark_incomplete(selected)
+        store.reset(embedder.dim)
+        store.upsert(chunks, vectors)
+        state = save_state(root, store, head)
+        if selected == 'psf/requests' and store.client.collection_exists('gitcontext'):
+            store.client.delete_collection('gitcontext')
     return {'mode': 'full', 'commits_behind': 0, 'files_added': len({c.file_path for c in chunks}),
             'files_modified': 0, 'files_deleted': 0, 'files_renamed': 0,
             'chunks_removed': removed, 'chunks_added': len(chunks),

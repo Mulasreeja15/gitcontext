@@ -39,6 +39,15 @@ JUDGE_K = 6
 API_HOST = "127.0.0.1"
 API_PORT = 8000
 API_MAX_K = 20
+API_CLONE_TIMEOUT = 120
+API_EMBED_BATCH_SIZE = 16
+PYTHON_FILE_RATIO = 0.2
+LANGUAGE_EXTENSIONS = {'.py': 'Python', '.js': 'JavaScript', '.jsx': 'JavaScript',
+                       '.ts': 'TypeScript', '.tsx': 'TypeScript', '.java': 'Java',
+                       '.go': 'Go', '.rs': 'Rust', '.rb': 'Ruby', '.php': 'PHP',
+                       '.c': 'C', '.h': 'C', '.cpp': 'C++', '.cs': 'C#',
+                       '.swift': 'Swift', '.kt': 'Kotlin', '.scala': 'Scala',
+                       '.sh': 'Shell', '.html': 'HTML', '.css': 'CSS'}
 INDEX_STATE_DIR = DATA_DIR / "index_state"
 INDEX_PAYLOAD_VERSION = 2  # file-level Git provenance and metadata filtering
 UI_PATH = PROJECT_ROOT / "gitcontext" / "static" / "index.html"
