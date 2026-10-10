@@ -16,6 +16,7 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/config.py` | Central settings: dotenv loading, models, local storage paths, retrieval tuning, chunk/file limits, supported extensions, and skipped directories. |
 | `gitcontext/chunker.py` | `Chunk` metadata, deterministic UUIDs, embedding context headers, tree-sitter Python parsing, decorated definitions, large-class summaries and methods, line-window splitting, and document sections. |
 | `gitcontext/ingest.py` | Resolve local repositories or clone Git URLs into `data/repos`; walk supported files, skip hidden/generated/oversized content, and collect chunks with repository-relative POSIX paths. |
+| `gitcontext/indexing.py` | Full/incremental indexing, atomic `data/index_state.json`, Git diffs/managed-clone pulls, freshness checks, interrupted-update recovery, and summaries. |
 | `gitcontext/store.py` | `Embedder` loads sentence-transformers and produces normalized embeddings; `VectorStore` resets/upserts the Qdrant collection, searches by cosine similarity, and scrolls payloads for BM25. |
 | `gitcontext/retriever.py` | Retrieval options/results, identifier tokenization, test-file detection, lazy BM25/reranker setup, vector and keyword rankings, RRF, test penalties, query rewriting, reranking, and latency measurements. |
 | `gitcontext/answer.py` | Groq `_chat()` client with 429 retries, source formatting, cited-answer prompts, and cached query rewriting. |
@@ -23,7 +24,7 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/api.py` | FastAPI lifespan holds one Retriever; validated health/search/ask routes and source-first SSE streaming. Retrieval is serialized to protect lazy initialization and local Qdrant. |
 | `gitcontext/static/index.html` | Self-contained UI served at `/`: vanilla JavaScript, DOM-only Markdown rendering, SSE answers, search-only mode, source cards, and citation navigation. |
 | `judge.py` | Answer-quality evaluation CLI: default retrieval, optional `--rewrite`, `--limit N`, and `--no-cache`; writes `eval/judge_results.md`. |
-| `main.py` | CLI entry point for `index`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces the existing collection. |
+| `main.py` | CLI entry point for `index`, `update`, `status`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces the existing collection. |
 | `evaluate.py` | Ablation harness: evaluates first relevant ranks up to 10, Recall@1/3/5, MRR@10, and median latency; writes summary and per-question ranks to `eval/results.md`. |
 | `check_labels.py` | Checks that every expected evaluation target matches a chunk in the current index. |
 | `eval/questions.jsonl` | 45 labelled questions for `psf/requests`, with expected file or `path::Symbol` targets. |

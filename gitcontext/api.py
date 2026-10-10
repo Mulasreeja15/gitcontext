@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-import json
 from queue import Queue
 from contextlib import asynccontextmanager
 from threading import Lock, Event, Thread
@@ -13,6 +12,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import answer, config
+from .indexing import index_status, load_state, update_index
 
 
 class SearchRequest(BaseModel):
@@ -49,6 +49,21 @@ class HealthResponse(BaseModel):
     status: str = 'ok'
     chunks_indexed: int
     repo_name: str | None = None
+    stale: bool
+    indexed_commit: str | None = None
+
+
+class ReindexResponse(BaseModel):
+    mode: str
+    commits_behind: int
+    files_added: int
+    files_modified: int
+    files_deleted: int
+    files_renamed: int
+    chunks_removed: int
+    chunks_added: int
+    seconds: float
+    state: dict
 
 
 class SearchResponse(BaseModel):
@@ -109,15 +124,6 @@ def home():
     return FileResponse(config.UI_PATH, media_type='text/html')
 
 
-def _repo_name() -> str | None:
-    """Read metadata saved on successful indexing; old indexes have no name."""
-    try:
-        value = json.loads(config.INDEX_METADATA_PATH.read_text(encoding='utf-8')).get('repo_name')
-        return value if isinstance(value, str) else None
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
 def _retrieve(body: SearchRequest, request: Request):
     """Serialize retrieval to protect lazy model initialization and local storage."""
     from .retriever import RetrievalOptions
@@ -154,7 +160,25 @@ def health(request: Request):
     """Report readiness and count without scanning every payload."""
     with request.app.state.retrieval_lock:
         count = request.app.state.retriever.store.count()
-    return HealthResponse(chunks_indexed=count, repo_name=_repo_name() if count else None)
+        status = index_status()
+    return HealthResponse(chunks_indexed=count, repo_name=status['repo_name'],
+                          stale=status['stale'], indexed_commit=status['indexed_commit'])
+
+
+@app.post('/reindex', response_model=ReindexResponse)
+def reindex(request: Request):
+    """Update in-process using the existing Qdrant connection and loaded embedder."""
+    with request.app.state.retrieval_lock:
+        state = load_state()
+        if not state:
+            raise HTTPException(409, 'No index state. Run main.py index <repo> first.')
+        retriever = request.app.state.retriever
+        try:
+            return update_index(state['repo_path'], store=retriever.store, embedder=retriever.embedder)
+        except (ValueError, SystemExit, OSError):
+            raise HTTPException(409, 'Update failed. Check repository history, working tree, and remote access.') from None
+        finally:
+            retriever.invalidate_index()
 
 
 @app.post('/search', response_model=SearchResponse)

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
-from sentence_transformers import SentenceTransformer
+from qdrant_client.models import (Distance, PointStruct, VectorParams, Filter,
+                                 FieldCondition, MatchValue, FilterSelector, PayloadSchemaType)
 
 from . import config
 from .chunker import Chunk
@@ -13,6 +14,7 @@ from .chunker import Chunk
 
 class Embedder:
     def __init__(self):
+        from sentence_transformers import SentenceTransformer
         print(f"Loading embedding model {config.EMBED_MODEL} ...")
         self.model = SentenceTransformer(config.EMBED_MODEL)
         self.model.max_seq_length = config.EMBED_MAX_TOKENS
@@ -42,6 +44,25 @@ class VectorStore:
             config.COLLECTION,
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
+        self.ensure_file_index()
+
+    def ensure_file_index(self) -> None:
+        """Request a keyword index where supported; local Qdrant scans filters."""
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='Payload indexes have no effect.*')
+                self.client.create_payload_index(config.COLLECTION, 'file_path', PayloadSchemaType.KEYWORD)
+        except NotImplementedError:
+            pass
+
+    def delete_by_file(self, file_path: str) -> int:
+        """Delete all chunks for an exact repository-relative path; return count."""
+        if not self.client.collection_exists(config.COLLECTION):
+            return 0
+        selector = Filter(must=[FieldCondition(key='file_path', match=MatchValue(value=file_path))])
+        removed = self.client.count(config.COLLECTION, count_filter=selector, exact=True).count
+        self.client.delete(config.COLLECTION, points_selector=FilterSelector(filter=selector))
+        return removed
 
     def count(self) -> int:
         """Return the indexed chunk count, including zero before first indexing."""

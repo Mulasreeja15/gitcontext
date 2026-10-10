@@ -112,7 +112,26 @@ reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
 Open `http://127.0.0.1:8000/` for the built-in web UI. Enter a question or use
 Search only to retrieve code without an LLM answer. Citations jump to collapsible
 source cards. Rewrite, BM25, reranking, and test inclusion are optional toggles.
-Repo names are saved on indexing; older indexes show a generic label until reindexed.
+Repo names and commit freshness come from `data/index_state.json`; older indexes
+show a generic label until reindexed. The header flags stale indexes.
+
+```powershell
+.\.venv\Scripts\python.exe main.py status
+.\.venv\Scripts\python.exe main.py update data\repos\requests
+```
+
+Full indexing records repository path, remote URL, commit, timestamp, chunk count,
+and embedding model. Updates pull only managed clones under `data/repos` with a
+remote (`--ff-only`), then replace chunks only for supported added/modified/deleted
+or renamed files. Missing state, changed embedding model, missing history, or
+an interrupted update triggers a full rebuild. Commit supported-file edits before
+updating; freshness also detects uncommitted supported-file changes. Status compares
+against local HEAD, without fetching the remote.
+
+Stop the service before using CLI index/update. While it is running, use
+`Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/reindex'` instead;
+the endpoint updates the saved repository under the service lock, reuses its
+Qdrant connection and embedding model, and invalidates payload/BM25 caches.
 
 From a second PowerShell terminal:
 
@@ -122,7 +141,7 @@ $body = @{ query = 'where is the timeout handled'; k = 6 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/search' -ContentType 'application/json' -Body $body
 ```
 
-`GET /health` returns status, indexed chunk count, and repo name when known. `POST /search`, `/ask`, and
+`GET /health` returns status, indexed chunk count, repo name, `stale`, and `indexed_commit`. `POST /search`, `/ask`, and
 `/ask/stream` share a request body: `query` (nonempty string), `k` (1-20, default
 6), and boolean `bm25`, `rerank`, `rewrite`, `include_tests` (all false by default).
 Search returns `hits` with source metadata, code text, and scores plus `timings`; ask returns

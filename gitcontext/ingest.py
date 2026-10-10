@@ -46,6 +46,18 @@ def iter_files(root: Path):
             yield path, path.relative_to(root).as_posix()
 
 
+def supported_path(root: Path, relative: str) -> bool:
+    """Apply full-index extension/directory exclusions to a Git diff path."""
+    path = Path(relative)
+    if path.is_absolute() or '..' in path.parts:
+        return False
+    if path.suffix.lower() not in set(config.CODE_EXTENSIONS) | config.DOC_EXTENSIONS:
+        return False
+    if any(part in config.SKIP_DIRS or part.startswith('.') for part in path.parts[:-1]):
+        return False
+    return not (root.resolve() == config.PROJECT_ROOT and path.parts[0] in config.SELF_SKIP_DIRS)
+
+
 def collect_chunks(root: Path) -> list[Chunk]:
     chunks: list[Chunk] = []
     for path, rel in iter_files(root):

@@ -14,17 +14,12 @@ Retrieval options:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-import time
-from collections import Counter
 from gitcontext import config
 
 try:
     from gitcontext.answer import generate_answer
-    from gitcontext.ingest import collect_chunks, resolve_repo
     from gitcontext.retriever import RetrievalOptions, Retriever, is_test
-    from gitcontext.store import Embedder, VectorStore
 except ImportError as e:
     sys.exit(
         f"Import failed: {e}\n"
@@ -33,21 +28,25 @@ except ImportError as e:
 
 
 def cmd_index(args):
-    root = resolve_repo(args.repo)
-    print(f"Scanning {root} ...")
-    chunks = collect_chunks(root)
-    if not chunks:
-        sys.exit("No supported files found.")
-    print(f"{len(chunks)} chunks: {dict(Counter(c.kind for c in chunks))}")
+    """Build a complete index and publish its Git/embedding state."""
+    from gitcontext.indexing import full_index, print_summary
+    print_summary(full_index(args.repo))
 
-    embedder = Embedder()
-    t0 = time.time()
-    vectors = embedder.encode([c.embedding_text() for c in chunks])
-    store = VectorStore()
-    store.reset(embedder.dim)
-    store.upsert(chunks, vectors)
-    config.INDEX_METADATA_PATH.write_text(json.dumps({'repo_name': root.name}), encoding='utf-8')
-    print(f"Done. Embedded + stored in {time.time() - t0:.1f}s")
+
+def cmd_update(args):
+    """Re-embed only supported files changed since the indexed commit."""
+    from gitcontext.indexing import update_index, print_summary
+    print_summary(update_index(args.repo))
+
+
+def cmd_status(args):
+    """Report freshness against local HEAD without taking a Qdrant lock."""
+    from gitcontext.indexing import index_status
+    status = index_status()
+    print(f"Indexed commit: {status['indexed_commit'] or 'not indexed'}")
+    print(f"Current HEAD: {status['current_head'] or 'unknown'}")
+    print(f"Stale: {'yes' if status['stale'] else 'no'}; commits behind: {status['commits_behind']}; "
+          f"changed files: {status['changed_files']}")
 
 
 def options_from(args) -> RetrievalOptions:
@@ -116,6 +115,13 @@ def main():
     p.add_argument("repo")
     p.set_defaults(func=cmd_index)
 
+    p = sub.add_parser("update", help="incrementally update an indexed repository")
+    p.add_argument("repo")
+    p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("status", help="show index freshness against local HEAD")
+    p.set_defaults(func=cmd_status)
+
     p = sub.add_parser("search", help="show retrieved chunks only")
     p.add_argument("query")
     add_retrieval_flags(p)
@@ -131,7 +137,10 @@ def main():
     p.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except ValueError as error:
+        parser.exit(1, f"{error}\n")
 
 
 if __name__ == "__main__":

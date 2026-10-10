@@ -88,6 +88,12 @@ class Retriever:
         self._bm25_ids: list[str] = []
         self._reranker = None
 
+    def invalidate_index(self) -> None:
+        """Discard payload/BM25 caches after reindexing while retaining ML models."""
+        self._payloads.clear()
+        self._bm25 = None
+        self._bm25_ids.clear()
+
     # ---------- lazy setup ----------
 
     def prepare(self, opts: RetrievalOptions) -> None:

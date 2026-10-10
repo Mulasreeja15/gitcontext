@@ -12,7 +12,7 @@
 </style>
 </head>
 <body>
-<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><span><span class="dot"></span><span id="repo-name">Connecting…</span></span><span class="count" id="chunk-count">— chunks</span></div></div></header>
+<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><span><span class="dot"></span><span id="repo-name">Connecting…</span></span><span class="count" id="chunk-count">— chunks</span><span id="stale-notice" class="badge" role="status" hidden>Index is out of date</span></div></div></header>
 <main>
 <div class="eyebrow">Your code, with context</div>
 <h1>Ask your codebase.</h1>
@@ -143,6 +143,7 @@ async function health() {
     const data = await response.json(); $('repo-name').textContent = data.repo_name || 'Repository index';
     $('repo-name').title = data.repo_name ? '' : 'Older indexes have no repository metadata. Reindex to show its name.';
     $('chunk-count').textContent = Number(data.chunks_indexed).toLocaleString() + ' chunks';
+    $('stale-notice').hidden = !data.stale || !data.chunks_indexed;
     if (!data.chunks_indexed) status(emptyMessage, false, true);
   } catch (error) { $('repo-name').textContent = 'Disconnected'; status('Cannot reach GitContext. Check that the server is running.', false, true); }
 }
@@ -205,6 +206,7 @@ $('question-form').addEventListener('submit', event => {event.preventDefault(); 
 $('search-button').addEventListener('click', () => submit(true));
 $('query').addEventListener('keydown', event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); $('question-form').requestSubmit();}});
 health();
+setInterval(() => {if (!busy) health();}, 30000);
 </script>
 </body>
 </html>
