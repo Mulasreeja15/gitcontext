@@ -28,11 +28,14 @@ def resolve_repo(source: str) -> Path:
 
 def iter_files(root: Path):
     """Yield (absolute_path, repo_relative_posix_path) for supported files."""
+    root = root.resolve()
     supported = set(config.CODE_EXTENSIONS) | config.DOC_EXTENSIONS
     for dirpath, dirnames, filenames in os.walk(root):
         # prune skipped and hidden dirs in place so os.walk never enters them
         dirnames[:] = sorted(
             d for d in dirnames if d not in config.SKIP_DIRS and not d.startswith(".")
+            and not (root == config.PROJECT_ROOT and Path(dirpath) == root
+                     and d in config.SELF_SKIP_DIRS)
         )
         for fname in sorted(filenames):
             path = Path(dirpath) / fname

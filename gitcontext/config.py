@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()  # reads GROQ_API_KEY from the .env file
 
 DATA_DIR = Path("./data")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SELF_SKIP_DIRS = {"tests"}  # exclude our unit tests only when indexing this project
 REPOS_DIR = DATA_DIR / "repos"          # cloned repos land here
 QDRANT_PATH = str(DATA_DIR / "qdrant")  # local Qdrant, no Docker needed
 COLLECTION = "gitcontext"
