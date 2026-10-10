@@ -17,6 +17,7 @@ import argparse
 import sys
 import time
 from collections import Counter
+from gitcontext import config
 
 try:
     from gitcontext.answer import generate_answer
@@ -90,6 +91,12 @@ def cmd_ask(args):
     print_result(result, opts)
 
 
+def cmd_serve(args):
+    """Serve one process so models and local Qdrant are shared across requests."""
+    import uvicorn
+    uvicorn.run("gitcontext.api:app", host=config.API_HOST, port=args.port)
+
+
 def add_retrieval_flags(p):
     """Register the shared search and ask retrieval options."""
     p.add_argument("-k", type=int, default=6, help="number of results")
@@ -116,6 +123,10 @@ def main():
     p.add_argument("question")
     add_retrieval_flags(p)
     p.set_defaults(func=cmd_ask)
+
+    p = sub.add_parser("serve", help="run the FastAPI service")
+    p.add_argument("--port", type=int, default=config.API_PORT)
+    p.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     args.func(args)

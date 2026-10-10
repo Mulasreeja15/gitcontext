@@ -33,6 +33,9 @@ JUDGE_MODEL = LLM_MODEL  # a different judge model reduces self-preference bias
 JUDGE_CACHE_PATH = Path("eval/judge_cache.jsonl")
 JUDGE_RESULTS_PATH = Path("eval/judge_results.md")
 JUDGE_K = 6
+API_HOST = "127.0.0.1"
+API_PORT = 8000
+API_MAX_K = 20
 LLM_KEY_NAME = "GROQ_API_KEY"
 
 MAX_CHUNK_CHARS = 4000      # oversized functions/sections get split

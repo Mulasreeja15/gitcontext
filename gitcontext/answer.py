@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import json
 import time
+from collections.abc import Iterator
 from functools import lru_cache
 
 import requests
@@ -26,35 +28,110 @@ MAX_RETRIES = 6
 
 
 def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
-          model: str | None = None) -> str:
+          model: str | None = None, stream: bool = False) -> str | Iterator[str]:
     """Call Groq with shared rate-limit retries and an optional model override."""
     key = os.getenv(config.LLM_KEY_NAME)
     if not key:
         raise SystemExit(f"Missing {config.LLM_KEY_NAME}. Add it to your .env file.")
 
     for attempt in range(MAX_RETRIES):
+        body = {"model": model or config.LLM_MODEL, "messages": messages, "temperature": temperature}
+        request_options = {}
+        if stream:
+            body['stream'] = True
+            request_options['stream'] = True
         r = requests.post(
             config.LLM_URL,
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": model or config.LLM_MODEL, "messages": messages, "temperature": temperature},
+            json=body,
             timeout=timeout,
+            **request_options,
         )
         if r.status_code == 429:
             # Rate limited: wait as long as the server asks, or back off exponentially.
             retry_after = r.headers.get("retry-after")
             wait = float(retry_after) if retry_after else 5 * 2 ** attempt
             wait = min(wait, 60)
+            r.close()
             print(f"  Rate limited by Groq, waiting {wait:.0f}s (attempt {attempt + 1}/{MAX_RETRIES}) ...")
             time.sleep(wait)
             continue
         if r.status_code == 401:
+            r.close()
             raise SystemExit("API key rejected (401). Check the key in your .env file.")
         if r.status_code == 413:
+            r.close()
             raise SystemExit("Request too large (413). Try fewer sources: add  -k 4  to your command.")
-        r.raise_for_status()
-        return (r.json()["choices"][0]["message"]["content"] or "").strip()
+        try:
+            r.raise_for_status()
+        except requests.RequestException:
+            r.close()
+            raise
+        if stream:
+            return _ResponseStream(r)
+        try:
+            return (r.json()["choices"][0]["message"]["content"] or "").strip()
+        finally:
+            r.close()
 
     raise SystemExit("Still rate limited after several retries. Wait a few minutes and try again.")
+
+
+class _ResponseStream:
+    """Close HTTP even if a connected token iterator is never consumed."""
+
+    def __init__(self, response):
+        self.response = response
+        self.tokens = _stream_tokens(response)
+        self.started = False
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.closed:
+            raise StopIteration
+        self.started = True
+        try:
+            return next(self.tokens)
+        except BaseException:
+            self.closed = True  # token generator's finally already closed HTTP
+            raise
+
+    def close(self):
+        """Release an open response on cancellation, including before iteration."""
+        if not self.closed:
+            self.closed = True
+            if self.started:
+                self.tokens.close()
+            else:
+                self.response.close()
+
+
+def _stream_tokens(response) -> Iterator[str]:
+    """Parse OpenAI SSE data frames, preserving content whitespace and closing HTTP."""
+    try:
+        for line in response.iter_lines():
+            if isinstance(line, bytes):
+                line = line.decode('utf-8')
+            if not line.startswith('data:'):
+                continue
+            data = line[5:].strip()
+            if data == '[DONE]':
+                return
+            if not data:
+                continue
+            event = json.loads(data)
+            if 'error' in event:
+                raise ValueError('Upstream streaming error')
+            choices = event.get('choices', [])
+            if choices:
+                token = choices[0].get('delta', {}).get('content')
+                if token:
+                    yield token
+    finally:
+        response.close()
 
 
 def format_sources(hits: list[tuple[float, dict]]) -> str:
@@ -68,12 +145,23 @@ def format_sources(hits: list[tuple[float, dict]]) -> str:
     return "\n\n".join(blocks)
 
 
-def generate_answer(question: str, hits: list[tuple[float, dict]]) -> str:
+def _answer_messages(question: str, hits: list[tuple[float, dict]]) -> list[dict]:
+    """Use identical grounding prompts for buffered and streaming answers."""
     prompt = f"Sources:\n\n{format_sources(hits)}\n\nQuestion: {question}"
-    return _chat([
+    return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
-    ])
+    ]
+
+
+def generate_answer(question: str, hits: list[tuple[float, dict]]) -> str:
+    """Generate a complete answer through the shared retrying Groq client."""
+    return _chat(_answer_messages(question, hits))
+
+
+def stream_answer(question: str, hits: list[tuple[float, dict]]) -> Iterator[str]:
+    """Open a retrying Groq stream before returning its content iterator."""
+    return _chat(_answer_messages(question, hits), stream=True)
 
 
 @lru_cache(maxsize=1024)

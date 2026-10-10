@@ -98,6 +98,38 @@ python main.py ask "..." --rerank           # cross-encoder reranking
 python main.py search "..." --include-tests # don't down-rank tests
 ```
 
+## API service
+
+Run from the repository root with an existing index. The service binds to
+`127.0.0.1` and keeps one Retriever per process; embedding models load at startup,
+and optional BM25/reranking components load on first use. Stop the server before
+reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
+
+```powershell
+.\.venv\Scripts\python.exe main.py serve --port 8000
+```
+
+From a second PowerShell terminal:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health'
+$body = @{ query = 'where is the timeout handled'; k = 6 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/search' -ContentType 'application/json' -Body $body
+```
+
+`GET /health` returns status and indexed chunk count. `POST /search`, `/ask`, and
+`/ask/stream` share a request body: `query` (nonempty string), `k` (1-20, default
+6), and boolean `bm25`, `rerank`, `rewrite`, `include_tests` (all false by default).
+Search returns `hits` with source metadata and scores plus `timings`; ask returns
+`answer`, `sources`, and `timings`. Invalid inputs return 422; an empty index or
+unavailable LLM returns 503. Plain search and health do not call Groq; rewriting
+and answer routes require configured credentials.
+
+`POST /ask/stream` uses SSE with JSON data: `sources` carries sources and retrieval
+timings first, followed by `token` events carrying a `token` string (Groq content
+deltas), and a `done` event with final timings. A failure after streaming begins
+produces an `error` event. HTTP 429 retries happen before the stream begins.
+
 ## Evaluation
 
 ```bash

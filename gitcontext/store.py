@@ -43,6 +43,12 @@ class VectorStore:
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
 
+    def count(self) -> int:
+        """Return the indexed chunk count, including zero before first indexing."""
+        if not self.client.collection_exists(config.COLLECTION):
+            return 0
+        return self.client.count(config.COLLECTION, exact=True).count
+
     def upsert(self, chunks: list[Chunk], vectors: list[list[float]], batch: int = 128) -> None:
         for i in range(0, len(chunks), batch):
             points = [
