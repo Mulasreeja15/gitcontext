@@ -44,6 +44,20 @@ class Chunk:
         return asdict(self)
 
 
+@dataclass
+class HistoryChunk(Chunk):
+    """Commit/PR provenance remains available on every split discussion chunk."""
+    sha: str | None = None
+    number: int | None = None
+    title: str = ''
+    author: str = ''
+    date: str = ''
+    url: str | None = None
+    merged_at: str | None = None
+    changed_files: tuple[str, ...] = ()
+    labels: tuple[str, ...] = ()
+
+
 # ---------- helpers ----------
 
 def _text(src: bytes, start: int, end: int) -> str:

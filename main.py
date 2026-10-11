@@ -52,7 +52,7 @@ def cmd_status(args):
 
 
 def options_from(args) -> RetrievalOptions:
-    metadata = {key: getattr(args, key) for key in ('since', 'author') if getattr(args, key, None)}
+    metadata = {key: getattr(args, key) for key in ('since', 'author', 'sources') if getattr(args, key, None)}
     return RetrievalOptions(
         bm25=args.bm25,
         rerank=args.rerank,
@@ -81,6 +81,11 @@ def print_result(result, opts):
         )
         if p.get('last_commit_sha'):
             print(f"    last changed {p['last_modified'][:10]} by {p['last_author']}, {p['last_commit_sha'][:7]}")
+        if p['kind'] in {'commit', 'pr'}:
+            identifier = p.get('sha', '')[:8] if p['kind'] == 'commit' else f"PR #{p['number']}"
+            print(f"    {identifier} · {p.get('date', '')[:10]} · {p.get('author', '')}")
+            if p.get('url'):
+                print(f"    {p['url']}")
     parts = [f"{name.replace('_ms', '')} {ms:.0f} ms" for name, ms in result.timings.items()]
     print("\nLatency: " + ", ".join(parts))
 
@@ -101,7 +106,7 @@ def cmd_ask(args):
 def cmd_serve(args):
     """Serve one process so models and local Qdrant are shared across requests."""
     import uvicorn
-    uvicorn.run("gitcontext.api:app", host=config.API_HOST, port=args.port)
+    uvicorn.run("gitcontext.api:app", host=args.host, port=args.port)
 
 
 def add_retrieval_flags(p):
@@ -129,6 +134,16 @@ def cmd_remove(args):
     print(f'Removed index: {args.repo}')
 
 
+def cmd_index_history(args):
+    """Index commit rationale and optional GitHub PR discussions."""
+    from gitcontext.history import index_history
+    result = index_history(args.repo, unshallow=args.unshallow, commits_only=args.commits_only)
+    for message in result['messages']:
+        print(message)
+    print(f"Indexed {result['commits']} commits, {result['prs']} PRs; "
+          f"chunks removed/added: {result['chunks_removed']}/{result['chunks_added']}")
+
+
 def add_metadata_flags(parser):
     """Validate the optional Git provenance filters shared by search and ask."""
     from datetime import date
@@ -143,6 +158,7 @@ def add_metadata_flags(parser):
 
     parser.add_argument('--since', type=since_date, help='last modified on/after YYYY-MM-DD (UTC)')
     parser.add_argument('--author', help='exact last author name')
+    parser.add_argument('--sources', choices=['code', 'history', 'all'], default='code')
 
 
 def main():
@@ -153,6 +169,12 @@ def main():
     p = sub.add_parser("index", help="index a repo (local path or Git URL)")
     p.add_argument("repo")
     p.set_defaults(func=cmd_index)
+
+    p = sub.add_parser('index-history', help='index commit history and optional PR discussions')
+    p.add_argument('--repo', type=repo_id, default=config.DEFAULT_REPO)
+    p.add_argument('--unshallow', action='store_true', help='fetch full history for a shallow clone')
+    p.add_argument('--commits-only', action='store_true', help='skip GitHub API calls')
+    p.set_defaults(func=cmd_index_history)
 
     p = sub.add_parser("update", help="incrementally update an indexed repository")
     p.add_argument("source", nargs='?', help='optional checkout or URL')
@@ -178,6 +200,7 @@ def main():
     p.set_defaults(func=cmd_ask)
 
     p = sub.add_parser("serve", help="run the FastAPI service")
+    p.add_argument("--host", default=config.API_HOST)
     p.add_argument("--port", type=int, default=config.API_PORT)
     p.set_defaults(func=cmd_serve)
 

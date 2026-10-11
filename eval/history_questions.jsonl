@@ -1,0 +1,8 @@
+{"question":"Why did Requests clarify the README's bad commit error as a bad commit timestamp?","expected":["commit::8ff173b1"]}
+{"question":"Why was URLRequired removed from the documented Requests exceptions?","expected":["commit::e361622f"]}
+{"question":"Why did Requests start considering TLS settings when choosing a connection pool?","expected":["commit::c0813a2d"]}
+{"question":"Why was JSONDecodeError's __reduce__ method fixed for pickling?","expected":["commit::3ff3ff21"]}
+{"question":"Why can the total connection timeout exceed the timeout specified by the caller?","expected":["commit::a64f32ba"]}
+{"question":"Why was an automatic retry example added to the advanced usage documentation?","expected":["commit::cdbc2e27"]}
+{"question":"Why was the Python version upper bound of less than 4 removed from python_requires?","expected":["commit::16a17a3c"]}
+{"question":"Why did Requests replace chardet with charset_normalizer as its default dependency?","expected":["commit::2ed84f55"]}

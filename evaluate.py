@@ -12,6 +12,7 @@ import argparse
 import json
 import statistics
 from pathlib import Path
+from dataclasses import replace
 
 from gitcontext.retriever import RetrievalOptions, Retriever
 
@@ -32,9 +33,9 @@ REWRITE_CONFIGS = [
 ]
 
 
-def load_questions() -> list[dict]:
+def load_questions(path: Path | None = None) -> list[dict]:
     rows = []
-    for line in QUESTIONS.read_text(encoding="utf-8").splitlines():
+    for line in (path or QUESTIONS).read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             rows.append(json.loads(line))
@@ -45,6 +46,10 @@ def is_match(payload: dict, target: str) -> bool:
     """target is 'path' or 'path::Symbol'. A chunk matches if it's in that file
     and its name contains the symbol, or it contains the symbol's definition."""
     path, _, symbol = target.partition("::")
+    if path == 'commit':
+        return payload.get('kind') == 'commit' and bool(symbol) and (payload.get('sha') or '').startswith(symbol)
+    if path == 'pr':
+        return payload.get('kind') == 'pr' and str(payload.get('number')) == symbol
     if payload["file_path"] != path:
         return False
     if not symbol:
@@ -65,15 +70,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--with-rewrite", action="store_true")
     parser.add_argument("--details", action="store_true")
+    parser.add_argument('--questions', type=Path, default=QUESTIONS)
+    parser.add_argument('--sources', choices=['code', 'history', 'all'])
     args = parser.parse_args()
 
-    questions = load_questions()
+    questions = load_questions(args.questions)
+    if not questions:
+        parser.error('Question file is empty.')
+    sources = args.sources or ('history' if all(t.startswith(('commit::', 'pr::'))
+                        for q in questions for t in q['expected']) else 'code')
     configs = CONFIGS + (REWRITE_CONFIGS if args.with_rewrite else [])
+    configs = [(name, replace(opts, sources=sources)) for name, opts in configs]
     n = len(questions)
 
     retriever = Retriever()
-    retriever.prepare(RetrievalOptions(rerank=True))    # load BM25 + reranker up front
-    retriever.retrieve("warm up", 5, RetrievalOptions(rerank=True))
+    retriever.prepare(RetrievalOptions(rerank=True, sources=sources))
+    retriever.retrieve("warm up", 5, RetrievalOptions(rerank=True, sources=sources))
 
     summary, ranks_by_config = [], {}
     for name, opts in configs:
@@ -111,15 +123,16 @@ def main():
         print("\nRank of first correct result ('-' = not in top 10):\n")
         print("\n".join(detail))
 
-    RESULTS.write_text(
+    output = RESULTS if args.questions == QUESTIONS else args.questions.with_name(args.questions.stem + '_results.md')
+    output.write_text(
         "# Retrieval evaluation\n\n"
-        f"Repo: psf/requests, {n} labelled questions, ranks checked up to {DEPTH}.\n\n"
+        f"Repo: psf/requests, {n} labelled questions, sources: {sources}, ranks checked up to {DEPTH}.\n\n"
         + "\n".join(table)
         + "\n\n## Rank of first correct result per question\n\n"
         + "\n".join(detail) + "\n",
         encoding="utf-8",
     )
-    print(f"\nSaved to {RESULTS}")
+    print(f"\nSaved to {output}")
 
 
 if __name__ == "__main__":

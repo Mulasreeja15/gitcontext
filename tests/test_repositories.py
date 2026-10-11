@@ -87,7 +87,7 @@ def cli_namespace():
     functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
     namespace = {'argparse': argparse, 'config': config}
     namespace.update({name: Mock() for name in ['cmd_index', 'cmd_update', 'cmd_status',
-                                               'cmd_search', 'cmd_ask', 'cmd_serve']})
+                                               'cmd_search', 'cmd_ask', 'cmd_serve', 'cmd_index_history']})
     exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), 'exec'), namespace)
     return namespace
 

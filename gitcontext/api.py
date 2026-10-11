@@ -15,8 +15,10 @@ from pydantic import BaseModel, Field, field_validator
 from . import answer, config
 from .indexing import index_status, load_state, update_index
 from datetime import date
+from typing import Literal
 from .repositories import repo_id, list_repos, remove_repo
 from .service_indexing import github_repo, index_repository, language_profile
+from .history import is_shallow
 
 
 class SearchRequest(BaseModel):
@@ -30,6 +32,7 @@ class SearchRequest(BaseModel):
     include_tests: bool = False
     since: str | None = None
     author: str | None = Field(default=None, min_length=1)
+    sources: Literal['code', 'history', 'all'] = 'code'
 
     @field_validator('repo')
     @classmethod
@@ -53,6 +56,18 @@ class SearchRequest(BaseModel):
         return value.strip()
 
 
+class HistoryMetadata(BaseModel):
+    sha: str | None = None
+    number: int | None = None
+    title: str
+    author: str
+    date: str
+    url: str | None = None
+    merged_at: str | None = None
+    changed_files: list[str] = []
+    labels: list[str] = []
+
+
 class Source(BaseModel):
     """Source order corresponds to one-based inline answer citations."""
     file_path: str
@@ -66,6 +81,7 @@ class Source(BaseModel):
     last_commit_sha: str | None = None
     last_author: str | None = None
     last_modified: str | None = None
+    history: HistoryMetadata | None = None
 
 
 class HealthResponse(BaseModel):
@@ -180,6 +196,7 @@ class RepoResponse(BaseModel):
     indexed_commit: str | None
     stale: bool
     language_warning: str | None = None
+    history_notice: str | None = None
 
 
 def _job_status(app):
@@ -229,6 +246,17 @@ def repos(request: Request):
             if 'language_warning' not in state and state.get('repo_path'):
                 profile = language_profile(Path(state['repo_path']))
             row['language_warning'] = profile.get('language_warning')
+            row['history_notice'] = None
+            if state.get('repo_path'):
+                try:
+                    shallow = is_shallow(Path(state['repo_path']))
+                    if shallow or not state.get('history_chunks'):
+                        option = ' --unshallow' if shallow else ''
+                        prefix = 'Shallow clone: earlier commit history is unavailable. ' if shallow else 'History is not indexed. '
+                        row['history_notice'] = (prefix + 'Stop the server and run python main.py index-history --repo '
+                                                 + row['repo'] + option + '.')
+                except ValueError:
+                    row['history_notice'] = 'History unavailable: repository checkout cannot be read.'
         return rows
 
 
@@ -297,6 +325,7 @@ def _retrieve(body: SearchRequest, request: Request):
     opts = RetrievalOptions(bm25=body.bm25, rerank=body.rerank,
                             penalize_tests=not body.include_tests, rewrite=body.rewrite,
                             since=body.since, author=body.author)
+    opts.sources = body.sources
     identity = body.repo or config.DEFAULT_REPO
     job = _job_status(request.app)
     if job['repo'] == identity and job['state'] in {'cloning', 'chunking', 'embedding'}:
@@ -322,6 +351,7 @@ def _sources(hits) -> list[Source]:
     return [Source(**{field: payload[field] for field in
                     ('file_path', 'start_line', 'end_line', 'kind', 'name', 'text')},
                    score=score, is_test=is_test(payload),
+                   history=HistoryMetadata(**payload) if payload['kind'] in {'commit', 'pr'} else None,
                    **{field: payload.get(field) for field in ('last_commit_sha', 'last_author', 'last_modified')}) for score, payload in hits]
 
 

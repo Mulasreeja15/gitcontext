@@ -1,10 +1,24 @@
 # GitContext
 
-**Ask questions about any Python codebase and get answers grounded in the actual source, with file and line citations.**
+[![Tests](https://github.com/Mulasreeja15/gitcontext/actions/workflows/tests.yml/badge.svg)](https://github.com/Mulasreeja15/gitcontext/actions/workflows/tests.yml)
 
-GitContext is a retrieval-augmented generation (RAG) system for code. It parses a repository into functions, classes and methods, retrieves the code relevant to a developer's question, and answers questions like *"How does this library decide whether to follow a redirect?"* by citing the exact code it used.
+**Ask a Python codebase how it works—and why it changed—with answers that cite the source.**
 
-Every retrieval technique in the pipeline was **measured on a labelled evaluation set**, and only the ones that improved results are on by default.
+GitContext is a portfolio RAG project that measures retrieval choices instead of assuming more components produce better answers. Embedding and search run locally; Groq generates grounded answers from numbered excerpts.
+
+## What it does
+
+- Answers questions about Python GitHub repositories with clickable source citations.
+- Keeps multiple repositories isolated in separate Qdrant collections.
+- Retrieves commit history and optional GitHub PR discussions for “why” questions.
+- Streams answers in a responsive web UI with search-only mode, source cards, and provenance.
+- Exposes a FastAPI service with models loaded once, background indexing, and incremental updates.
+
+## Demo
+
+![GitContext screenshot placeholder](docs/screenshot.png)
+
+[Demo video — coming soon](#demo). The screenshot is a placeholder; replace it with a captured UI and add the recording link here.
 
 ## Results
 
@@ -28,271 +42,207 @@ Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with 
 - **BM25 hurts on natural-language questions.** Adding keyword search lowered MRR in every pairing (for example 0.750 to 0.679), because plain-English questions share few words with code. On an early 12-question set, hybrid search looked best; the larger, harder set reversed that conclusion.
 - **BM25 becomes useful after LLM query rewriting.** Rewritten queries contain code identifiers, so keyword matching starts to work: Recall@5 rose from 93% to 96%, at some cost to top-1 precision.
 - **LLM query rewriting rescues paraphrased questions.** "What stops it from bouncing between pages forever?" was not found by any other method; with rewriting it ranked first. Rewriting gave the best MRR (0.768) at the cost of one LLM call (~1.3 s).
-- **General-purpose rerankers hurt code retrieval.** `ms-marco-MiniLM-L-6-v2` lowered MRR to 0.592 and added about 1 s per query; the larger `bge-reranker-base` was worse and 6x slower. Both are trained on web search data, so the problem is domain mismatch, not model size.
+- **General-purpose rerankers hurt code retrieval.** `ms-marco-MiniLM-L-6-v2` lowered MRR to 0.592 and added about 1 s per query; the larger `bge-reranker-base` was worse and 6x slower. These web-search models appear poorly matched to code; the history experiment below supports that explanation, without proving it.
 
 ### Known limitations
 
 - **Vocabulary gap.** "How can I run my own code every time a response comes back?" fails in every configuration: the answer is *hooks*, a word the question never uses.
 - **Implicit behavior.** "Why is a password being sent even though I never passed one?" (the answer is automatic `.netrc` lookup) is rarely found, because nothing in the question points to that mechanism.
 
+### Answer quality: LLM judge
+
+The judge measures correctness (1–5) against labelled gold context, faithfulness (0–1) to supplied sources, correct-source citation rate, and the fraction of answers with zero unsupported claims.
+
+**Results pending:** `eval/judge_results.md` is not present in this checkout. No answer-quality scores are claimed. Run `python judge.py --rewrite` with Groq credentials to generate the summary, per-question scores, and five lowest-scoring answers. Answers and judgments are cached; use `--no-cache` after changing an index or prompts. The default judge and answer model are the same; a different `JUDGE_MODEL` reduces self-preference bias.
+
+### History retrieval: 8 questions
+
+Evaluated on eight hand-labelled Requests commit questions, independently of the 45-question code set. [Full report](eval/history_questions_results.md) · [Questions and label verification](eval/history_labels.md).
+
+| Configuration | Recall@1 | Recall@3 | Recall@5 | MRR@10 | Median latency |
+|---|---|---|---|---|---|
+| Vector only (Phase 1 baseline) | 88% | 88% | 88% | 0.875 | 31 ms |
+| Vector + test down-ranking | 88% | 88% | 88% | 0.875 | 33 ms |
+| Hybrid (vector + BM25, RRF) | 88% | 88% | 88% | 0.889 | 54 ms |
+| Hybrid + test down-ranking | 88% | 88% | 88% | 0.889 | 54 ms |
+| Hybrid + test down-ranking + rerank | 100% | 100% | 100% | 1.000 | 979 ms |
+
+
+The MiniLM reranker lowered code Recall@5 from 89% to 82%, but improved history Recall@5 from 88% to 100%. Commit messages resemble the prose used in web-search training more closely than source code does, which supports the domain-mismatch explanation. **Eight selected questions are a small sample**, not evidence of a general history-retrieval guarantee. Published latencies depend on hardware and cache state.
+
 ## Architecture
 
 ```mermaid
-flowchart LR
-    A["GitHub repository"] --> B["tree-sitter chunker<br/>functions, classes, methods"]
-    B --> C["bge-small embeddings"]
-    C --> D[("Qdrant vector DB")]
-
-    Q["Developer question"] --> R["LLM query rewrite<br/>(optional, --rewrite)"]
-    R --> V["Vector search"]
-    R --> K["BM25 keyword search<br/>(optional, --bm25)"]
-    D --> V
-    D --> K
-    V --> F["Reciprocal Rank Fusion"]
-    K --> F
-    F --> T["Test-file down-ranking"]
-    T --> X["Cross-encoder rerank<br/>(optional, --rerank)"]
-    X --> L["Groq GPT-OSS 120B<br/>answer with citations"]
+flowchart TD
+    Repo[GitHub or local repository] --> Code[tree-sitter code and document chunks]
+    Repo --> Git[Commit messages and diff statistics]
+    PR[Optional GitHub PR discussions] --> Hist[History chunks]
+    Git --> Hist
+    Code --> Embed[bge-small local embeddings]
+    Hist --> Embed
+    Embed --> DB[(Shared local Qdrant: one collection per repo)]
+    UI[Web UI] --> API[FastAPI: shared client and models]
+    CLI[CLI] --> Retrieval
+    API --> Retrieval[Repo and source filters; vector search; test down-ranking]
+    DB --> Retrieval
+    Retrieval --> Optional[Optional rewrite, BM25 + RRF, MiniLM rerank]
+    Optional --> Groq[Groq GPT-OSS 120B]
+    Groq --> Answer[Streaming answer with numbered citations]
+    Optional --> Search[Search-only source cards]
 ```
 
-## How it works
-
-1. **Syntax-aware chunking.** Python files are parsed with tree-sitter and split at real boundaries: one chunk per function, class or method. Large classes become a summary chunk (signature, docstring, method list) plus one chunk per method. Each chunk carries a context header (`File: sessions.py / Method: SessionRedirectMixin.resolve_redirects`) so exact names are easy to match.
-2. **Embedding and storage.** Chunks are embedded locally with `BAAI/bge-small-en-v1.5` and stored in a local Qdrant collection with file path, line numbers and symbol names as metadata.
-3. **Retrieval.** Each question is embedded and matched against the code. Optionally, an LLM first rewrites the question into code vocabulary, and BM25 keyword search (with a code-aware tokenizer that splits `snake_case` and `camelCase`) runs alongside vector search, merged with Reciprocal Rank Fusion.
-4. **Test-file down-ranking.** Test files are down-weighted, because "how does X work" questions should surface implementation code.
-5. **Grounded answers.** The top chunks are sent to an LLM with strict rules: answer only from the numbered sources, cite them inline, and say so when the answer isn't there.
+Functions, classes and methods carry file/symbol context headers. Small classes stay intact; large classes get a summary and method chunks. Chunks include line numbers and last-changing commit metadata (author names, never emails). History stores messages and short diff statistics, not full diffs. All settings live in [`gitcontext/config.py`](gitcontext/config.py).
 
 ## Quick start
 
-```bash
+Requires Python 3.12 and Git. From PowerShell:
+
+```powershell
 git clone https://github.com/Mulasreeja15/gitcontext.git
 cd gitcontext
 python -m venv .venv
-.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py index https://github.com/psf/requests
+.\.venv\Scripts\python.exe main.py serve --host 127.0.0.1 --port 8000
 ```
 
-Create a `.env` file with a free [Groq](https://console.groq.com) API key:
+On Linux/macOS, activate with `source .venv/bin/activate` and use `.venv/bin/python`. The first index downloads the embedding model; reranking downloads MiniLM on first use. Search needs no API key. For answers or query rewriting, configure `GROQ_API_KEY` in your local `.env` (loaded by python-dotenv); never commit credentials. Optional PR import uses `GITHUB_TOKEN`.
 
+### Docker
+
+```powershell
+docker compose up --build
 ```
-GROQ_API_KEY=your_key_here
-```
 
-## Usage
+Compose reads your local `.env`, exposes port 8000, and mounts `./data` at `/app/data`. The image installs CPU-only PyTorch and Git, and downloads both embedding and reranking models during the build. Model files live outside the data volume; runtime model loading uses the cached files. `.dockerignore` excludes local data, credentials, Git history, and the virtual environment. The first build needs network access and takes time.
 
-```bash
-# Index a repository (Git URL or local folder)
+Open **http://localhost:8000/** and use **+ Add repository** to index a public Python GitHub repository. Docker and host processes must not open the same local Qdrant folder simultaneously.
+
+## Web UI
+
+Select a repository in the header. **+ Add repository** opens a modal; enter `https://github.com/pallets/click`, press **Index**, and watch cloning/chunking/embedding progress. The new repository is selected when indexing finishes. Escape, the close button, or the backdrop closes the modal without cancelling indexing.
+
+Ask a question (Enter submits; Shift+Enter adds a line) or use **Search only** without Groq. Rewrite, BM25, Rerank, and Include tests start off. Select **Code / History / All** to choose sources. Streamed citations jump to collapsible source cards with code, scores, lines, and Git provenance. The UI follows your system light/dark theme and reports rate limiting, empty indexes, stale indexes, and repositories with little Python code.
+
+## CLI usage
+
+The examples below use `python` from the activated environment. Coding tasks should use `.venv\Scripts\python.exe` explicitly.
+
+```powershell
 python main.py index https://github.com/psf/requests
+python main.py index data\repos\requests
+python main.py search "where is the timeout handled" -k 6
+python main.py ask "How are redirects followed?"
+python main.py search "timeout" --bm25 --include-tests
+python main.py ask "What stops endless redirects?" --rewrite
+python main.py ask "How are redirects followed?" --rewrite --bm25
+python main.py search "TLS verification" --rerank
+python main.py search "HTTPAdapter" --since 2024-03-02 --author "Author Name"
+python main.py search "Why did the character detector change?" --sources history
+python main.py search "TLS connection pool verification" --sources all --bm25
+python main.py search --help
+python main.py serve --host 0.0.0.0 --port 8000
+```
 
-# Retrieval only: see which code chunks come back
-python main.py search "where is the timeout handled"
+`--since` is inclusive from midnight UTC; `--author` matches an exact, case-sensitive last-author name. Filters apply to vector and BM25 candidates. `--include-tests` disables the default penalty; there are no `--no-bm25` or `--no-rerank` flags.
 
-# Full RAG: answer with citations
-python main.py ask "How does requests decide whether to follow a redirect?"
+### Multiple repositories and incremental updates
 
-# Optional retrieval flags
-python main.py ask "..." --rewrite          # LLM query rewriting (best accuracy)
-python main.py ask "..." --rewrite --bm25   # add keyword search (best Recall@5)
-python main.py ask "..." --rerank           # cross-encoder reranking
-python main.py search "..." --include-tests # don't down-rank tests
-
-# Add another repository; existing indexes remain available
+```powershell
 python main.py index https://github.com/pallets/click
-python main.py search "How are command arguments parsed?" --repo pallets/click
-python main.py ask "How does a command group work?" --repo pallets/click
+python main.py search "How are arguments parsed?" --repo pallets/click
+python main.py ask "How do command groups work?" --repo pallets/click
+python main.py repos
 python main.py status --repo pallets/click
 python main.py update --repo pallets/click
-python main.py repos
+python main.py update data\repos\requests --repo psf/requests
 python main.py remove pallets/click
 ```
 
-Search, ask, status, and update default to `psf/requests`. Each repository has a
-separate collection (`repo__psf__requests`, `repo__pallets__click`) in the shared
-`data/qdrant` directory and a state file in `data/index_state`, such as
-`psf__requests.json`. BM25, payload, rewrite, and judge caches are scoped by
-repository. IDs use lowercase `owner/name`; letters, numbers, dots, underscores,
-and hyphens are accepted, with `__` reserved as the separator. Local repositories
-use their remote identity, or `local/<directory>` when no URL remote exists.
-New clones use owner-qualified directories, with matching older clones reused.
+Search, ask, status and update default to `psf/requests`. Collections use `repo__<owner>__<name>` and states use `data/index_state/<owner>__<name>.json`. Retrieval/BM25 and rewrite/judge caches are scoped per repository. Local repositories use the remote identity, or `local/<directory>` without one. `index` replaces only the selected repository; `remove` preserves the source checkout.
 
-`index` replaces only the selected repository's collection. Reindexing
-`psf/requests` migrates the legacy `gitcontext` collection. `remove` deletes the
-selected collection and state, preserving source checkouts. All evaluators
-(`evaluate.py`, `check_labels.py`, `judge.py`) continue targeting `psf/requests`
-by default. Stop the service before CLI storage commands: local Qdrant locks
-the entire shared folder, even across different collections.
+Full indexing saves repository identity, path, remote, commit, timestamp, model, and chunk count. Update pulls managed clones with `--ff-only`, then replaces only supported changed files, handling deletion and renames. Commit edits before updating. Missing state, incompatible schema/model, unavailable commit history, or interrupted updates trigger a full rebuild. Status compares local HEAD and working-tree changes; it does not fetch remote changes. Limits are **200 MB on disk including Git history** and **20,000 total chunks**.
 
-Indexing rejects repositories above 200 MB on disk (including Git history) or
-20,000 chunks; limits are configured in `gitcontext/config.py` and checked before
-embedding or replacing stored chunks. Incremental updates apply the chunk limit
-to the resulting index. The API and web UI also support repository selection.
+**Use one server worker. Stop the server before CLI storage commands**, including retrieval and evaluation: local Qdrant locks the shared folder. While serving, use the API's shared client for indexing, updating and removing repos.
 
-## API service
-
-Run from the repository root with an existing index. The service binds to
-`127.0.0.1` and keeps one shared QdrantClient and embedding model per process,
-with separate Retriever/BM25/payload caches per repository. Models load at startup,
-and optional BM25/reranking components load on first use. Stop the server before
-reindexing, since local Qdrant holds an exclusive storage lock. Use one worker.
+### Index history
 
 ```powershell
-.\.venv\Scripts\python.exe main.py serve --port 8000
+python main.py index-history --repo psf/requests --commits-only
+python main.py index-history --repo pallets/click --unshallow --commits-only
+python main.py index-history --repo psf/requests
 ```
 
-Open `http://127.0.0.1:8000/` for the built-in web UI. Enter a question or use
-Search only to retrieve code without an LLM answer. Citations jump to collapsible
-source cards. Rewrite, BM25, reranking, and test inclusion are optional toggles.
-The header picker shows indexed repository names and chunk counts. Expand
-**Add repository**, enter `https://github.com/pallets/click`, and press **Index**.
-The page polls live cloning/chunking/embedding progress and selects the new repo
-when indexing finishes. Ask/Search are disabled for the repo being indexed;
-other indexes remain available between model batches. Use **Search only** to
-try the new repo without calling Groq. If Click is already indexed, try
-`https://github.com/pallets/flask` to add another. Reindexing an existing URL
-rebuilds only that repository's collection.
+The last `HISTORY_MAX_COMMITS=500` commits are examined; only commits touching supported paths are included. Web-added repositories use `--depth 1`; earlier history needs explicit `--unshallow` (`git fetch --unshallow`). Without it, shallow commit indexing is skipped with a notice. Full-history fetching can exceed the disk limit.
 
-`POST /index` accepts `{"repo_url":"https://github.com/<owner>/<name>"}` and
-returns 202. Only public HTTPS GitHub repository URLs are accepted; credentials,
-query strings, fragments, and subpaths are rejected with 422. New repositories
-are cloned with `--depth 1` in a background thread. Shallow clones have commit
-metadata only for available history. Existing checkouts are reused. The service
-accepts one indexing/update/removal job at a time (409 while busy).
+Without `GITHUB_TOKEN`, PR indexing skips gracefully. With a token, up to `PR_MAX=200` merged PRs include titles, bodies, labels, changed files, issue/review comments and review summaries. Pagination and rate limits are handled; raw responses cache for one day under `data/github_cache/<owner>__<name>/`, without tokens or authorization headers. `--commits-only` avoids the GitHub API. Run history indexing again after new commits/discussions; code updates preserve history when the embedding model stays the same.
 
-`GET /index/status` returns `state` (`idle`, `cloning`, `chunking`, `embedding`,
-`done`, `error`), `repo`, `progress` (such as `812/2400 chunks`), and `error`.
-Job status is in memory and resets on server restart. `GET /repos` returns a list
-of repo identities, chunk counts, indexed commits, staleness, and optional
-language warnings. `DELETE /repos/{owner}/{name}` removes only that index/state
-and cached retrieval data, preserving source checkouts. Every storage operation
-uses the server's shared client; deletion never closes it. Shutdown waits for an
-active indexing job before closing the client.
+## API
 
-Search, ask, and streaming request bodies accept optional `repo` (default
-`psf/requests`), for example `{"query":"How are arguments parsed?","repo":"pallets/click"}`.
-`GET /health?repo=pallets/click` reports that repository's health. Requests for a
-repo being indexed return 409; empty indexes return 503. Repositories with less
-than 20% Python source files show a language notice; this threshold and filename
-language mapping live in config. Unsupported code is not indexed as Python.
-Repo names and commit freshness come from `data/index_state/psf__requests.json`; older indexes
-show a generic label until reindexed. The header flags stale indexes.
+Interactive API documentation: **http://localhost:8000/docs**.
 
 ```powershell
-.\.venv\Scripts\python.exe main.py status
-.\.venv\Scripts\python.exe main.py update --repo psf/requests
+Invoke-RestMethod -Uri 'http://localhost:8000/health'
+Invoke-RestMethod -Uri 'http://localhost:8000/repos'
+$body = @{ query = 'where is the timeout handled'; repo = 'psf/requests'; k = 6; sources = 'code' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/search' -ContentType 'application/json' -Body $body
+$index = @{ repo_url = 'https://github.com/pallets/click' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/index' -ContentType 'application/json' -Body $index
+Invoke-RestMethod -Uri 'http://localhost:8000/index/status'
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/reindex'
+Invoke-RestMethod -Method Delete -Uri 'http://localhost:8000/repos/pallets/click'
 ```
 
-Full indexing records repository path, remote URL, commit, timestamp, chunk count,
-and embedding model. Updates pull only managed clones under `data/repos` with a
-remote (`--ff-only`), then replace chunks only for supported added/modified/deleted
-or renamed files. Missing state, changed embedding model, missing history, or
-an interrupted update triggers a full rebuild. Commit supported-file edits before
-updating; freshness also detects uncommitted supported-file changes. Status compares
-against local HEAD, without fetching the remote.
+| Endpoint | Behavior |
+|---|---|
+| `GET /health?repo=psf/requests` | Status, repo name, chunk count, stale flag and indexed commit. |
+| `GET /repos` | Indexed repositories, counts, freshness and language/history notices. |
+| `POST /index` | Validate public HTTPS GitHub URL; background clone/index, returns 202. |
+| `GET /index/status` | State (`idle/cloning/chunking/embedding/done/error`), repo, progress and error. |
+| `DELETE /repos/{owner}/{name}` | Remove index/state and cached retrieval data. |
+| `POST /reindex` | Incrementally update the default saved repository. |
+| `POST /search` | Ranked hits with text, metadata, scores and timings. |
+| `POST /ask` | Answer, numbered sources and timings. |
+| `POST /ask/stream` | SSE: `sources`, then `token`, with `status`, `done`, or `error` events. |
 
-Stop the service before using CLI index/update. While it is running, use
-`Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/reindex'` instead;
-the endpoint updates the saved repository under the service lock, reuses its
-Qdrant connection and embedding model, and invalidates payload/BM25 caches.
+Search/answer bodies accept nonempty `query`, `k` (1–20; default 6), optional `repo`, `sources` (`code/history/all`), `since`, `author`, and booleans `bm25`, `rerank`, `rewrite`, `include_tests` (default false). Invalid inputs return 422, busy indexing returns 409, and empty indexes return 503. Groq calls retry 429 responses; the stream emits status messages while waiting. Job status is in memory and resets on restart. The server shares one Qdrant client and embedder with per-repo retrieval caches; optional reranking loads once on demand.
 
-From a second PowerShell terminal:
+## Evaluation and tests
 
 ```powershell
-Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health'
-$body = @{ query = 'where is the timeout handled'; k = 6 } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/search' -ContentType 'application/json' -Body $body
+python evaluate.py
+python evaluate.py --with-rewrite --details
+python evaluate.py --questions eval/history_questions.jsonl --details
+python check_labels.py
+python judge.py --limit 3
+python judge.py --rewrite
+python judge.py --no-cache
+$env:PYTHON_DOTENV_DISABLED = '1'
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-`GET /health` returns status, indexed chunk count, repo name, `stale`, and `indexed_commit`. `POST /search`, `/ask`, and
-`/ask/stream` share a request body: `query` (nonempty string), `k` (1-20, default
-6), and boolean `bm25`, `rerank`, `rewrite`, `include_tests` (all false by default).
-Search returns `hits` with source metadata, code text, and scores plus `timings`; ask returns
-`answer`, `sources`, and `timings`. Invalid inputs return 422; an empty index or
-unavailable buffered LLM returns 503. Plain search and health do not call Groq; rewriting
-and answer routes require configured credentials.
+Retrieval reports go to `eval/results.md` and `eval/history_questions_results.md`. Judge reports go to `eval/judge_results.md`, with a resumable JSONL cache. Judge and rewrite evaluation call Groq; ordinary retrieval evaluation does not. The unit suite mocks models and external calls and uses temporary Git repositories/in-memory Qdrant. CI runs Python 3.12 with CPU PyTorch and offline model settings; tests require no API keys, downloaded models, or network.
 
-`POST /ask/stream` uses SSE with JSON data: `sources` carries sources and retrieval
-timings first, followed by `token` events carrying a `token` string (Groq content
-deltas), and a `done` event with final timings. A failure after streaming begins
-produces an `error` event. Answer retries send `status` events so the UI reports
-rate limiting live, before any tokens arrive. Sources remain available if Groq fails.
+## Known limitations
 
-## Evaluation
-
-Every indexed chunk carries its file's last modifying commit SHA, author name
-(no email address), and ISO commit timestamp. Full and incremental indexing use
-a single batched Git history pass. Provenance is displayed in CLI results, API
-sources, and web source cards, and does not enter embedding text.
-
-```powershell
-.\.venv\Scripts\python.exe main.py search "resolve_redirects" --since 2024-03-02
-.\.venv\Scripts\python.exe main.py search "HTTPAdapter" --author "Author Name"
-```
-
-API search/ask bodies accept optional `since` (`YYYY-MM-DD`) and `author` fields.
-Dates are inclusive from midnight UTC, authors match exact names (case-sensitive),
-and combined filters use AND. Qdrant filters apply before vector search; hybrid
-BM25 candidates are restricted to the same Qdrant-filtered set. Non-Git files
-have null provenance and do not match metadata filters. Older payload schemas
-trigger a full rebuild on update.
-
-```bash
-python evaluate.py                  # ablation over all retrieval configurations
-python evaluate.py --with-rewrite   # include LLM query rewriting
-python evaluate.py --details        # rank of the first correct result per question
-python check_labels.py              # verify every expected answer exists in the index
-```
-
-Questions and expected answers live in `eval/questions.jsonl`. Each expected answer is a file and symbol, such as `src/requests/sessions.py::resolve_redirects`. Results are written to `eval/results.md`. The Groq client retries automatically with backoff when rate-limited, and rewrites are cached so each question is rewritten once per run.
-
-### Answer-quality evaluation
-
-Answer quality complements the retrieval evaluation:
-
-```powershell
-.\.venv\Scripts\python.exe judge.py --limit 3
-.\.venv\Scripts\python.exe judge.py
-.\.venv\Scripts\python.exe judge.py --rewrite
-.\.venv\Scripts\python.exe judge.py --no-cache
-```
-
-The judge generates answers from six retrieved sources and scores correctness
-against chunks matching the expected labels, plus faithfulness to the sources
-the answer actually received. Correct-source citations are checked in Python.
-Summary and per-question scores, along with the five lowest-scoring cases, are
-printed and saved to `eval/judge_results.md`. Answers and judgments are cached
-in `eval/judge_cache.jsonl`, including partial runs, by question, configuration,
-and model choices. `--no-cache` bypasses both cache reads and writes; use it
-after reindexing or changing prompts. `--rewrite` evaluates both the default
-and rewrite configurations. These commands call Groq and require configured
-credentials. `JUDGE_MODEL` defaults to the answer model; using a different
-judge model can reduce self-preference bias.
-
-## Project structure
-
-```
-gitcontext/
-├── chunker.py     # tree-sitter syntax-aware chunking
-├── ingest.py      # clone/walk repositories
-├── store.py       # embeddings + Qdrant vector store
-├── retriever.py   # vector/BM25 retrieval, RRF, test down-ranking, reranking
-├── answer.py      # LLM answers, query rewriting, rate-limit retries
-└── config.py      # all settings in one place
-main.py            # CLI: index, search, ask
-evaluate.py        # evaluation harness (Recall@K, MRR, latency)
-check_labels.py    # validates the evaluation labels
-eval/              # labelled questions and results
-```
-
-## Tech stack
-
-Python · tree-sitter · sentence-transformers · Qdrant · rank-bm25 · Groq (GPT-OSS 120B)
+- Python is the supported code language; other repositories mostly contribute documentation.
+- Natural-language vocabulary gaps and implicit behavior remain hard retrieval cases; see the measured failures above.
+- The reranker is slow and usually harmful on code; history gains need validation on a larger set.
+- Citations and judge scores help inspect grounding, but do not guarantee correct answers. The default judge shares the answer model's biases.
+- Git history/PR discussions may be incomplete; shallow clones, missing tokens and stale caches limit coverage.
+- Local Qdrant supports one process; the service is intended for local use and has no authentication or production deployment hardening.
+- GitHub/Groq rate limits constrain import and answer throughput. Job progress is not persisted across restarts.
 
 ## Roadmap
 
-- [x] Syntax-aware chunking, embeddings, vector search, cited answers
-- [x] Hybrid retrieval, RRF, test down-ranking, reranker and query-rewrite experiments
-- [x] 45-question evaluation set with a full ablation study
-- [ ] LLM-judged answer correctness and citation faithfulness
-- [ ] FastAPI backend, web interface, incremental re-indexing from git diffs
-- [ ] Commit history and pull request discussions as additional sources
+- [x] Syntax-aware RAG, multi-repo isolation, metadata filters and incremental indexing
+- [x] Streaming FastAPI service and accessible, dependency-free web UI
+- [x] Commit/PR sources, retrieval ablations and cached LLM-judge tooling
+- [x] Docker packaging and offline unit-test CI
+- [ ] Publish the demo recording, real screenshot and answer-quality results
+- [ ] Expand history evaluation and compare code-trained rerankers
+- [ ] Add more language parsers and stronger grounding/citation evaluation
+- [ ] Add authentication and persistent background jobs for shared deployments
+
+Python · tree-sitter · sentence-transformers · Qdrant · rank-bm25 · FastAPI · Groq

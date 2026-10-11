@@ -70,7 +70,10 @@ def save_state(root: Path, store, commit: str | None) -> dict:
     """Atomically publish state only after all database writes have succeeded."""
     remotes = git(root, 'remote', optional=True).splitlines()
     remote = 'origin' if 'origin' in remotes else (remotes[0] if remotes else None)
-    state = {'repo_id': store.repo_id, 'repo_path': str(root.resolve()), 'remote_url':
+    previous = load_state(store.repo_id) or {}
+    retained = {key: value for key, value in previous.items() if key.startswith('history_')
+                and previous['embed_model'] == config.EMBED_MODEL}
+    state = {**retained, 'repo_id': store.repo_id, 'repo_path': str(root.resolve()), 'remote_url':
              git(root, 'remote', 'get-url', remote, optional=True) if remote else None,
              'indexed_commit': commit, 'repo_name': store.repo_id.split('/')[1],
              'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -203,18 +206,24 @@ def full_index(source: str, *, store=None, embedder=None, repo=None, progress=No
     if progress:
         progress('chunking', '')
     chunks = annotate_chunks(collect_chunks(root), file_metadata(root, head))
-    check_chunk_count(len(chunks))
+    previous = load_state(selected)
+    preserve_history = bool(previous and previous['embed_model'] == config.EMBED_MODEL and store.count())
+    history_count = len(store.all_payloads(sources='history')) if preserve_history else 0
+    check_chunk_count(len(chunks) + history_count)
     if embedder is None:
         from .store import Embedder
         embedder = Embedder()
-    removed = store.count()
+    removed = store.count() - history_count
     if progress:
         progress('embedding', f'0/{len(chunks)} chunks')
     vectors = embedder.encode([chunk.embedding_text() for chunk in chunks]) if chunks else []
     _verify_snapshot(root, head)
     with write_lock if write_lock is not None else nullcontext():
         _mark_incomplete(selected)
-        store.reset(embedder.dim)
+        if preserve_history and store.count():
+            store.delete_code()
+        else:
+            store.reset(embedder.dim)
         store.upsert(chunks, vectors)
         state = save_state(root, store, head)
         if selected == 'psf/requests' and store.client.collection_exists('gitcontext'):

@@ -60,6 +60,7 @@ class RetrievalOptions:
     rewrite: bool = False
     since: str | None = None
     author: str | None = None
+    sources: str = 'code'
 
     def describe(self) -> str:
         parts = ["vector"]
@@ -71,6 +72,8 @@ class RetrievalOptions:
             parts.append("cross-encoder rerank")
         if self.rewrite:
             parts.append("query rewriting")
+        if self.sources != 'code':
+            parts.append(self.sources + ' sources')
         return " + ".join(parts)
 
 
@@ -88,6 +91,7 @@ class Retriever:
         self._payloads: dict[str, dict] = {}
         self._bm25 = None
         self._bm25_ids: list[str] = []
+        self._bm25_cache = {}
         self._reranker = None
 
     def invalidate_index(self) -> None:
@@ -95,26 +99,32 @@ class Retriever:
         self._payloads.clear()
         self._bm25 = None
         self._bm25_ids.clear()
+        if hasattr(self, '_bm25_cache'):
+            self._bm25_cache.clear()
 
     # ---------- lazy setup ----------
 
     def prepare(self, opts: RetrievalOptions) -> None:
         """Load what these options need, so it isn't counted as query latency."""
         if opts.bm25:
-            self._ensure_bm25()
+            self._ensure_bm25(opts.sources)
         if opts.rerank:
             self._ensure_reranker()
 
-    def _ensure_bm25(self) -> None:
-        if self._bm25 is not None:
+    def _ensure_bm25(self, sources='code') -> None:
+        if not hasattr(self, '_bm25_cache'):
+            self._bm25_cache = {}
+        if sources in self._bm25_cache:
+            self._bm25, self._bm25_ids = self._bm25_cache[sources]
             return
-        docs = self.store.all_payloads()
+        docs = self.store.all_payloads(sources=sources)
         self._bm25_ids = [pid for pid, _ in docs]
         corpus = []
         for pid, p in docs:
             self._payloads[pid] = p
             corpus.append(tokenize(f"{p['file_path']} {p['name']} {p.get('parent', '')} {p['text']}"))
-        self._bm25 = BM25Okapi(corpus)
+        self._bm25 = BM25Okapi(corpus) if corpus else None
+        self._bm25_cache[sources] = self._bm25, self._bm25_ids
 
     def _ensure_reranker(self) -> None:
         if self._reranker is None:
@@ -126,15 +136,15 @@ class Retriever:
 
     def _vector_ranking(self, query: str, opts: RetrievalOptions) -> list[str]:
         hits = self.store.search(self.embedder.encode([query])[0], config.CANDIDATES,
-                                 since=opts.since, author=opts.author)
+                                 since=opts.since, author=opts.author, sources=opts.sources)
         for pid, _, p in hits:
             self._payloads[pid] = p
         return [pid for pid, _, _ in hits]
 
-    def _bm25_ranking(self, query: str, allowed: set[str] | None = None) -> list[str]:
-        self._ensure_bm25()
+    def _bm25_ranking(self, query: str, allowed: set[str] | None = None, sources='code') -> list[str]:
+        self._ensure_bm25(sources)
         tokens = tokenize(query)
-        if not tokens:
+        if not tokens or self._bm25 is None:
             return []
         scores = self._bm25.get_scores(tokens)
         top = [i for i in np.argsort(scores)[::-1]
@@ -161,12 +171,12 @@ class Retriever:
         t = time.perf_counter()
         rankings = []
         allowed = None
-        if opts.bm25 and (opts.since or opts.author):
-            allowed = {pid for pid, _ in self.store.all_payloads(since=opts.since, author=opts.author)}
+        if opts.bm25:
+            allowed = {pid for pid, _ in self.store.all_payloads(since=opts.since, author=opts.author, sources=opts.sources)}
         for q in queries:
             rankings.append(self._vector_ranking(q, opts))
             if opts.bm25:
-                rankings.append(self._bm25_ranking(q, allowed))
+                rankings.append(self._bm25_ranking(q, allowed, opts.sources))
 
         # 2) Reciprocal Rank Fusion: score = sum of 1 / (RRF_K + rank)
         fused: dict[str, float] = defaultdict(float)

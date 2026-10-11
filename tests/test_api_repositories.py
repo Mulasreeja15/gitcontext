@@ -109,7 +109,7 @@ def test_list_remove_use_shared_client(service):
     row = dict(repo='pallets/click', chunk_count=4, indexed_commit='abc', stale=False)
     with patch.object(api, 'list_repos', return_value=[row]) as listing, \
             patch.object(api, 'remove_repo') as remove:
-        assert client.get('/repos').json() == [{**row, 'language_warning':None}]
+        assert client.get('/repos').json() == [{**row, 'language_warning':None, 'history_notice':None}]
         listing.assert_called_once_with(client=base.store.client)
         assert client.delete('/repos/pallets/click').json() == {'removed':'pallets/click'}
         remove.assert_called_once_with('pallets/click', client=base.store.client)
@@ -151,3 +151,16 @@ def test_thread_start_failure_returns_error_and_releases_lock(service):
             assert client.post('/index', json={'repo_url':'https://github.com/pallets/click'}).status_code == 503
         assert client.get('/index/status').json()['state'] == 'error'
         assert api.app.state.index_thread is None
+
+
+def test_history_option_and_source_metadata(service):
+    client, retriever, _ = service
+    payload = retriever.retrieve.return_value.hits[0][1]
+    payload.update(kind='commit', sha='a' * 40, title='Fix timeout', author='Contributor',
+                   date='2024-03-02T00:00:00Z', url='https://github.com/owner/repo/commit/' + 'a' * 40,
+                   changed_files=['src/code.py'])
+    response = client.post('/search',json={'query':'why', 'sources':'history'})
+    assert response.status_code == 200
+    assert response.json()['hits'][0]['history']['sha'] == 'a' * 40
+    assert retriever.retrieve.call_args.args[2].sources == 'history'
+    assert client.post('/search',json={'query':'why', 'sources':'invalid'}).status_code == 422

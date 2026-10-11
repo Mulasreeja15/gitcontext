@@ -24,9 +24,10 @@ Groq serves `openai/gpt-oss-120b` for query rewriting and grounded answers. Answ
 | `gitcontext/judge.py` | Answer-quality judge, JSON validation/retry, gold context, deterministic citation checks, resumable JSONL cache, and Markdown reports. |
 | `gitcontext/api.py` | FastAPI lifespan owns one QdrantClient/embedding model, per-repo Retriever caches, repo routing/listing/deletion, one background indexing job with status polling, and source-first SSE answers. Locks serialize shared model/storage work. |
 | `gitcontext/service_indexing.py` | Strict HTTPS GitHub URL validation, shallow clones, background full-index pipeline using injected client/model, batch embedding progress, and filename-based language notices. |
+| `gitcontext/history.py` | Batched commit message/numstat parsing, shallow detection/unshallow option, paginated optional GitHub PR discussions with rate-limit handling and per-repo JSON cache, history-only replacement preserving code and unavailable PR data. |
 | `gitcontext/static/index.html` | Self-contained UI served at `/`: vanilla JavaScript, DOM-only Markdown rendering, SSE answers, search-only mode, source cards, and citation navigation. |
 | `judge.py` | Answer-quality evaluation CLI: default retrieval, optional `--rewrite`, `--limit N`, and `--no-cache`; writes `eval/judge_results.md`. |
-| `main.py` | CLI entry point for `index`, `update`, `status`, `repos`, `remove`, `search`, `ask`, and `serve --port 8000`; displays ranked sources and timings. Indexing replaces only the selected collection. |
+| `main.py` | CLI entry point for `index`, `update`, `status`, `repos`, `remove`, `search`, `ask`, and `serve --host 127.0.0.1 --port 8000`; displays ranked sources and timings. Indexing replaces only the selected collection. |
 | `evaluate.py` | Ablation harness: evaluates first relevant ranks up to 10, Recall@1/3/5, MRR@10, and median latency; writes summary and per-question ranks to `eval/results.md`. |
 | `check_labels.py` | Checks that every expected evaluation target matches a chunk in the current index. |
 | `eval/questions.jsonl` | 45 labelled questions for `psf/requests`, with expected file or `path::Symbol` targets. |
@@ -70,6 +71,32 @@ Limits in config are 200 MB on disk (including Git history) and 20,000 chunks. C
 
 ## Published evaluation results
 
+History sources are opt-in: `main.py index-history --repo owner/name` examines the
+latest `HISTORY_MAX_COMMITS=500` commits and imports up to `PR_MAX=200` merged PR
+discussions when `os.getenv(config.GITHUB_KEY_NAME)` finds a token. Never open the
+credential file or print tokens/headers. Missing credentials skip PRs gracefully.
+`--commits-only` forbids API calls; shallow clones require explicit `--unshallow`
+to fetch full history. Cache response JSON under per-repo `data/github_cache`,
+never credentials. Respect GitHub Retry-After and rate/reset headers; long waits
+are reported so users can retry. Commits touching only excluded/unsupported files
+are omitted; no full diffs or author-email metadata are indexed.
+
+Search/ask accept `--sources code|history|all` (code by default); API bodies and
+the web selector use the same options. Code filters exclude commit/PR payloads,
+including in BM25; BM25 corpora are cached separately per source selection.
+History metadata includes SHA/PR number, title, author, date, link, and changed
+files; API sources expose it under `history`. Keep citations numbered and render
+links only for validated GitHub commit/PR URLs. Code rebuilds preserve history
+when the embedding model stays the same. History reindexing preserves old PRs
+when import is skipped; all sources share the collection chunk limit.
+
+`eval/history_questions.jsonl` contains eight separately labelled why questions;
+evidence is in `eval/history_labels.md`. Never conflate these with the 45 code
+questions. `is_match` supports `commit::<SHA prefix>` and `pr::<number>`;
+`evaluate.py --questions <file>` infers the source selection and writes a separate
+report for alternate question files. Run both code and history evaluations after
+changing source filtering. Tests use mocked Git/API responses and memory Qdrant.
+
 Copied from `README.md`: `psf/requests`, 45 labelled questions spanning exact identifiers, technical questions, and plain-English paraphrases. These are published results, not a fresh run.
 
 | Configuration | Recall@1 | Recall@3 | Recall@5 | MRR@10 | Median latency |
@@ -102,3 +129,43 @@ Key findings:
 7. Prefer small, readable functions with docstrings. This is a portfolio project, so code clarity matters.
 8. Add or update pytest tests for new logic, and run relevant tests using `.venv\Scripts\python.exe -m pytest`.
 9. Use the existing virtual environment. Run Python as `.venv\Scripts\python.exe`; do not create a replacement environment or rely on a global interpreter.
+
+## Complete command reference
+
+Use `.venv\Scripts\python.exe` for every Python command below. Set
+`$env:PYTHON_DOTENV_DISABLED = '1'` for coding/verification commands; never
+open, print, or modify `.env`. Normal user startup may load credentials via dotenv.
+
+```powershell
+.\.venv\Scripts\python.exe main.py index <path-or-url>
+.\.venv\Scripts\python.exe main.py update [source] --repo owner/name
+.\.venv\Scripts\python.exe main.py status --repo owner/name
+.\.venv\Scripts\python.exe main.py repos
+.\.venv\Scripts\python.exe main.py remove owner/name
+.\.venv\Scripts\python.exe main.py search "query" --repo owner/name -k 6
+.\.venv\Scripts\python.exe main.py ask "question" --repo owner/name
+.\.venv\Scripts\python.exe main.py index-history --repo owner/name --commits-only
+.\.venv\Scripts\python.exe main.py index-history --repo owner/name --unshallow
+.\.venv\Scripts\python.exe main.py serve --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe evaluate.py --with-rewrite --details
+.\.venv\Scripts\python.exe evaluate.py --questions eval/history_questions.jsonl --details
+.\.venv\Scripts\python.exe check_labels.py
+.\.venv\Scripts\python.exe judge.py --rewrite --limit 3
+.\.venv\Scripts\python.exe judge.py --no-cache
+.\.venv\Scripts\python.exe -m pytest -q
+docker compose up --build
+```
+
+Search/ask optional flags: `--bm25`, `--rerank`, `--include-tests`, `--rewrite`,
+`--since YYYY-MM-DD`, `--author NAME`, `--sources code|history|all`. The default
+repo is psf/requests. `serve --host` defaults to config.API_HOST. Use one server
+worker; stop it before any CLI command that opens local Qdrant. Answers, rewrites
+and judge runs call Groq; avoid them during uncredentialed verification.
+
+Docker installs CPU torch and caches both configured models at build time outside
+the data mount. Compose injects the user's environment file without copying it
+into the image. CI runs offline unit tests with dotenv disabled on Python 3.12.
+The header Add repository button opens a native dialog; preserve indexing IDs,
+source routing, polling and safe DOM-only rendering when editing the UI.
+`eval/judge_results.md` is currently absent: never fabricate answer-quality scores.
+The README screenshot at docs/screenshot.png is explicitly a placeholder.

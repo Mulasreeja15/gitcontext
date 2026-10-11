@@ -6,7 +6,7 @@ import warnings
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (Distance, PointStruct, VectorParams, Filter,
-                                 FieldCondition, MatchValue, FilterSelector, PayloadSchemaType, DatetimeRange)
+                                 FieldCondition, MatchValue, MatchAny, FilterSelector, PayloadSchemaType, DatetimeRange)
 
 from . import config
 from .chunker import Chunk
@@ -80,6 +80,20 @@ class VectorStore:
             return 0
         return self.client.count(self.collection, exact=True).count
 
+    def delete_history(self) -> int:
+        """Replace commit/PR sources while preserving all code and documentation."""
+        selector = Filter(must=[FieldCondition(key='kind', match=MatchAny(any=['commit', 'pr']))])
+        count = self.client.count(self.collection, count_filter=selector, exact=True).count
+        self.client.delete(self.collection, points_selector=FilterSelector(filter=selector))
+        return count
+
+    def delete_code(self) -> int:
+        """A full code rebuild preserves already embedded commit/PR sources."""
+        selector = self.metadata_filter(sources='code')
+        count = self.client.count(self.collection, count_filter=selector, exact=True).count
+        self.client.delete(self.collection, points_selector=FilterSelector(filter=selector))
+        return count
+
     def upsert(self, chunks: list[Chunk], vectors: list[list[float]], batch: int = 128) -> None:
         for i in range(0, len(chunks), batch):
             points = [
@@ -89,10 +103,15 @@ class VectorStore:
             self.client.upsert(self.collection, points=points)
 
     @staticmethod
-    def metadata_filter(since: str | None = None, author: str | None = None):
+    def metadata_filter(since: str | None = None, author: str | None = None, sources: str = 'all'):
         """Match exact author names and an inclusive UTC date lower bound."""
         from datetime import date
         conditions = []
+        if sources not in {'code', 'history', 'all'}:
+            raise ValueError('sources must be code, history, or all')
+        history = FieldCondition(key='kind', match=MatchAny(any=['commit', 'pr']))
+        if sources == 'history':
+            conditions.append(history)
         if since:
             parsed = date.fromisoformat(since)
             if parsed.isoformat() != since:
@@ -100,24 +119,24 @@ class VectorStore:
             conditions.append(FieldCondition(key='last_modified', range=DatetimeRange(gte=since + 'T00:00:00Z')))
         if author:
             conditions.append(FieldCondition(key='last_author', match=MatchValue(value=author)))
-        return Filter(must=conditions) if conditions else None
+        return Filter(must=conditions, must_not=[history] if sources == 'code' else None) if conditions or sources == 'code' else None
 
-    def search(self, vector: list[float], k: int = 6, *, since=None, author=None) -> list[tuple[str, float, dict]]:
+    def search(self, vector: list[float], k: int = 6, *, since=None, author=None, sources='code') -> list[tuple[str, float, dict]]:
         """Returns (id, cosine score, payload) for the k nearest chunks."""
         result = self.client.query_points(
             self.collection, query=vector, limit=k, with_payload=True,
-            query_filter=self.metadata_filter(since, author)
+            query_filter=self.metadata_filter(since, author, sources)
         )
         return [(str(p.id), p.score, p.payload) for p in result.points]
 
-    def all_payloads(self, *, since=None, author=None) -> list[tuple[str, dict]]:
+    def all_payloads(self, *, since=None, author=None, sources='all') -> list[tuple[str, dict]]:
         """Every stored chunk. Used to build the BM25 keyword index."""
         out, offset = [], None
         while True:
             points, offset = self.client.scroll(
                 self.collection, limit=512, offset=offset,
                 with_payload=True, with_vectors=False,
-                scroll_filter=self.metadata_filter(since, author),
+                scroll_filter=self.metadata_filter(since, author, sources),
             )
             out.extend((str(p.id), p.payload) for p in points)
             if offset is None:

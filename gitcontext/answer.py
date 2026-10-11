@@ -17,6 +17,7 @@ Rules:
 - Cite sources inline like [1] or [2][3] after each claim.
 - Mention file paths when you refer to functions or classes.
 - Prefer implementation code over tests when explaining how something works.
+- For why questions, use commit messages and PR discussions when provided; distinguish documented intent from inference.
 - If the sources don't contain the answer, say so plainly and suggest what to search for."""
 
 REWRITE_PROMPT = """You turn a developer's question about a codebase into a search query for a code search engine.
@@ -142,7 +143,10 @@ def format_sources(hits: list[tuple[float, dict]]) -> str:
         lang = "python" if p["language"] == "python" else ""
         blocks.append(
             f"[{i}] {p['file_path']} lines {p['start_line']}-{p['end_line']} "
-            f"({p['kind']}: {p['name']})\n```{lang}\n{p['text']}\n```"
+            f"({p['kind']}: {p['name']})\n"
+            + (f"Date: {p.get('date', '')}; author: {p.get('author', '')}; link: {p.get('url') or 'local history'}\n"
+               if p['kind'] in {'commit', 'pr'} else '')
+            + f"```{lang}\n{p['text']}\n```"
         )
     return "\n\n".join(blocks)
 

@@ -46,7 +46,7 @@ def test_search_defaults_and_metadata(service):
     assert body['hits'] == [{'file_path': 'tests/test_x.py', 'start_line': 2, 'end_line': 5,
                             'kind': 'function', 'name': 'test_x', 'score': 0.75, 'is_test': True,
                             'text': 'def test_x(): pass', 'last_commit_sha': None,
-                            'last_author': None, 'last_modified': None}]
+                            'last_author': None, 'last_modified': None, 'history': None}]
     assert body['timings'] == {'search_ms': 2.0, 'total_ms': 3.0}
     query, k, options = retriever.retrieve.call_args.args
     assert query == 'question' and k == 6
@@ -148,6 +148,10 @@ def test_home_serves_self_contained_html(service):
     assert '<title>GitContext' in response.text
     assert 'Search only' in response.text and '/ask/stream' in response.text
     assert 'id="repo-picker"' in response.text and 'id="index-form"' in response.text
+    assert 'id="open-repository"' in response.text
+    dialog = response.text.split('<dialog ', 1)[1].split('</dialog>', 1)[0]
+    assert 'id="index-form"' in dialog and 'aria-labelledby="add-repository-title"' in dialog
+    assert 'id="index-form"' not in response.text.split('<main>', 1)[1].split('</main>', 1)[0]
     assert '/index/status' in response.text and 'repo:selectedRepo' in response.text
     assert 'innerHTML' not in response.text
     assert '<script src=' not in response.text

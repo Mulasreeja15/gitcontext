@@ -9,17 +9,18 @@
 :root{color-scheme:light dark;--bg:#f7f8fa;--panel:#fff;--ink:#18202e;--muted:#687386;--line:#e0e5eb;--accent:#4268df;--soft:#edf1ff;--code:#f4f6f9;--error:#a63138;--shadow:0 8px 28px #15233c06}
 @media(prefers-color-scheme:dark){:root{--bg:#11151c;--panel:#1a202a;--ink:#e9edf5;--muted:#9aa8bd;--line:#303a49;--accent:#95afff;--soft:#273450;--code:#141a23;--error:#ffa0a6;--shadow:none}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}button,textarea,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.6}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px}header{border-bottom:1px solid var(--line);background:var(--panel)}.header-inner{max-width:1080px;margin:auto;padding:21px 28px;display:flex;align-items:center;gap:16px}.brand{font-size:20px;font-weight:750;letter-spacing:-.7px}.mark{display:inline-grid;place-items:center;background:var(--soft);color:var(--accent);border-radius:9px;width:34px;height:34px;margin-right:9px;font:700 16px monospace}.repo{margin-left:auto;color:var(--muted);font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.dot{width:7px;height:7px;border-radius:50%;background:#40ad84;display:inline-block;margin-right:6px}.count{border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-variant-numeric:tabular-nums}main{max-width:980px;margin:54px auto;padding:0 28px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--accent);font-weight:700}h1{font-size:clamp(28px,5vw,38px);line-height:1.25;letter-spacing:-1.3px;margin:12px 0}p.intro{color:var(--muted);margin:0 0 28px}.composer{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}label.question-label{display:block;font-size:12px;font-weight:650;color:var(--muted);margin-bottom:10px}textarea{display:block;width:100%;min-height:102px;resize:vertical;border:0;background:transparent;color:var(--ink);outline:none;font-size:17px;line-height:1.65}textarea::placeholder{color:var(--muted)}.composer:focus-within{border-color:var(--accent)}.controls{border-top:1px solid var(--line);padding-top:16px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}.toggles{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.toggle{display:flex;align-items:center;gap:6px;cursor:pointer}.toggle input{accent-color:var(--accent);width:15px;height:15px;margin:0}.buttons{display:flex;gap:8px}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:650}.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}.hint{color:var(--muted);font-size:11px;margin:11px 0 0}.status{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;margin:20px 2px}.status.error{color:var(--error)}.spinner{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}@keyframes spin{to{transform:rotate(360deg)}}[hidden]{display:none!important}.results{margin-top:32px}.section-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}h2{font-size:13px;text-transform:uppercase;letter-spacing:1.3px;margin:0}.answer-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:26px}.answer{overflow-wrap:anywhere}.answer p:first-child{margin-top:0}.answer p:last-child{margin-bottom:0}.answer pre,.source-code{background:var(--code);border:1px solid var(--line);border-radius:8px;overflow:auto;padding:16px;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:4}.answer code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);padding:2px 5px;border-radius:4px}.answer pre code{padding:0;background:none;font-size:12px}.citation{display:inline-block;border:0;border-radius:4px;color:var(--accent);background:var(--soft);text-decoration:none;font-size:11px;font-weight:700;padding:0 5px;margin:0 2px;vertical-align:baseline}.timings{border-top:1px solid var(--line);padding-top:14px;margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}.timings strong{color:var(--ink);font-weight:600}.source-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:10px;transition:border-color .25s,box-shadow .25s;scroll-margin-top:20px}.source-card.highlight{border-color:var(--accent);box-shadow:0 0 0 3px var(--soft)}.source-card summary{padding:17px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;list-style:none}.source-card summary::-webkit-details-marker{display:none}.source-number{color:var(--accent);font:600 12px monospace;padding-top:2px;min-width:25px}.source-main{flex:1;min-width:0}.path{font:600 12px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.symbol{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.source-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:11px}.badge{color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 5px}.chevron{font-size:14px;transition:transform .2s}.source-card[open] .chevron{transform:rotate(90deg)}.source-code{margin:0 17px 17px}.empty{border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center;color:var(--muted);font-size:13px}.footer{margin:36px 0;color:var(--muted);font-size:11px;text-align:center}@media(max-width:640px){.header-inner{padding:15px 18px;flex-wrap:wrap;gap:8px}.repo{width:100%;margin:0 0 0 43px;font-size:11px}main{margin:30px auto;padding:0 18px}.composer{padding:16px}.controls{gap:16px}.buttons{width:100%}.buttons .btn{flex:1}.answer-panel{padding:18px}.source-card summary{padding:14px}.source-meta{flex-wrap:wrap;justify-content:flex-end;max-width:75px}.source-code{margin:0 14px 14px}.toggles{gap:12px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+.repository-dialog{width:min(560px,calc(100% - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #0003}.repository-dialog::backdrop{background:#10182888;backdrop-filter:blur(4px)}.dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.repository-dialog h2{font-size:19px;text-transform:none;letter-spacing:-.4px}.repository-dialog form{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}.repository-dialog label{width:100%}.repository-dialog input{flex:1;min-width:180px}.repository-dialog input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 </head>
 <body>
-<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><label for="repo-picker">Repository</label><select id="repo-picker" class="btn" aria-label="Repository"><option value="">Connecting…</option></select><span class="count" id="chunk-count">— chunks</span><span id="stale-notice" class="badge" role="status" hidden>Index is out of date</span></div></div></header>
-<main>
-<details class="composer" id="add-repository"><summary>Add repository</summary>
-<form id="index-form" style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+<header><div class="header-inner"><div class="brand"><span class="mark" aria-hidden="true">&lt;/&gt;</span>GitContext</div><div class="repo"><label for="repo-picker">Repository</label><select id="repo-picker" class="btn" aria-label="Repository"><option value="">Connecting…</option></select><span class="count" id="chunk-count">— chunks</span><span id="stale-notice" class="badge" role="status" hidden>Index is out of date</span><button id="open-repository" class="btn" type="button" aria-haspopup="dialog" aria-controls="add-repository">+ Add repository</button><span id="index-badge" class="badge" role="status" hidden></span></div></div></header>
+<dialog class="repository-dialog" id="add-repository" aria-labelledby="add-repository-title"><div class="dialog-heading"><h2 id="add-repository-title">Add repository</h2><button id="close-repository" class="btn" type="button" aria-label="Close add repository">✕</button></div><p class="hint">Index a public GitHub repository. Python code works best.</p>
+<form id="index-form">
 <label for="repo-url" class="question-label">Public GitHub repository URL</label>
 <input id="repo-url" type="url" required placeholder="https://github.com/pallets/click" class="btn" style="flex:1;min-width:220px" aria-describedby="index-progress">
 <button id="index-button" class="btn primary" type="submit">Index</button>
-</form><p id="index-progress" role="status" aria-live="polite" class="hint">Add a Python repository to get started.</p></details>
+</form><p id="index-progress" role="status" aria-live="polite" class="hint">Add a Python repository to get started.</p></dialog>
+<main>
 <p id="language-warning" class="hint" role="status" hidden></p>
 <div class="eyebrow">Your code, with context</div>
 <h1>Ask your codebase.</h1>
@@ -28,12 +29,14 @@
 <label for="query" class="question-label">What would you like to understand?</label>
 <textarea id="query" required placeholder="How does requests decide whether to follow a redirect?" aria-describedby="keyboard-hint"></textarea>
 <div class="controls"><div class="toggles">
+<label class="toggle" for="source-kind">Sources <select id="source-kind" class="btn"><option value="code">Code</option><option value="history">History</option><option value="all">All</option></select></label>
 <label class="toggle"><input type="checkbox" id="rewrite">Rewrite</label>
 <label class="toggle"><input type="checkbox" id="bm25">BM25</label>
 <label class="toggle"><input type="checkbox" id="rerank">Rerank</label>
 <label class="toggle"><input type="checkbox" id="include_tests">Include tests</label>
 </div><div class="buttons"><button type="button" id="search-button" class="btn">Search only</button><button type="submit" id="ask-button" class="btn primary">Ask ↗</button></div></div>
 <p class="hint" id="keyboard-hint">Enter to ask · Shift + Enter for a new line · Search only retrieves code without generating an answer.</p>
+<p class="hint" id="history-notice" role="status" hidden></p>
 </form>
 <div id="status" class="status" role="status" aria-live="polite" hidden><span id="spinner" class="spinner" aria-hidden="true"></span><span id="status-text"></span></div>
 <section id="results" class="results" hidden>
@@ -54,6 +57,8 @@ function updateButtons() {
   $('ask-button').disabled = disabled; $('search-button').disabled = disabled;
   $('repo-picker').disabled = busy;
   $('index-button').disabled = indexing();
+  $('index-badge').hidden = !indexing();
+  $('index-badge').textContent = indexing() ? indexJob.state + (indexJob.progress ? ' · ' + indexJob.progress : '…') : '';
 }
 function selectedMetadata() {
   const row = repoRows.find(item => item.repo === selectedRepo);
@@ -61,6 +66,8 @@ function selectedMetadata() {
   $('stale-notice').hidden = !row || !row.stale;
   $('language-warning').textContent = row?.language_warning || '';
   $('language-warning').hidden = !row?.language_warning;
+  $('history-notice').textContent = row?.history_notice || '';
+  $('history-notice').hidden = $('source-kind').value === 'code' || !row?.history_notice;
   updateButtons();
 }
 async function loadRepos(preferred) {
@@ -189,8 +196,20 @@ function sources(hits) {
     const card = element('details', undefined, 'source-card'); card.id = 'source-' + (index + 1); card.open = index === 0;
     const summary = element('summary'); summary.append(element('span', '[' + (index + 1) + ']', 'source-number'));
     const main = element('div', undefined, 'source-main');
-    main.append(element('div', hit.file_path + ':' + hit.start_line + '–' + hit.end_line, 'path'));
+    const location = hit.history ? (hit.kind === 'commit' ? 'Commit ' + hit.history.sha.slice(0,8) : 'PR #' + hit.history.number)
+      : hit.file_path + ':' + hit.start_line + '–' + hit.end_line;
+    main.append(element('div', location, 'path'));
     main.append(element('div', hit.kind + ' · ' + hit.name, 'symbol')); summary.append(main);
+    if (hit.history) {
+      const history = hit.history;
+      const identity = history.sha ? history.sha.slice(0,8) : 'PR #' + history.number;
+      main.append(element('div', identity + ' · ' + history.date.slice(0,10) + ' · ' + history.author, 'symbol'));
+      if (history.url && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(commit\/[a-f0-9]{40}|pull\/\d+)$/.test(history.url)) {
+        const link = element('a', 'View on GitHub', 'citation');
+        link.href = history.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.addEventListener('click', event => event.stopPropagation()); main.append(link);
+      }
+    }
     if (hit.last_commit_sha) main.append(element('div', 'last changed ' + (hit.last_modified || '').slice(0,10) + ' by ' + hit.last_author + ', ' + hit.last_commit_sha.slice(0,7), 'symbol'));
     const meta = element('div', undefined, 'source-meta');
     if (hit.is_test) meta.append(element('span', 'test', 'badge'));
@@ -251,7 +270,7 @@ async function submit(searchOnly) {
   answerText = ''; sourceCount = 0; $('answer').replaceChildren(); $('sources').replaceChildren(); $('timings').replaceChildren();
   $('results').hidden = false; $('welcome').hidden = true; $('answer-panel').hidden = false;
   $('answer-title').textContent = searchOnly ? 'Search results' : 'Answer'; status('Finding relevant code…', true);
-  const body = {query, k:6, repo:selectedRepo}; for (const id of ['rewrite','bm25','rerank','include_tests']) body[id] = $(id).checked;
+  const body = {query, k:6, repo:selectedRepo, sources:$('source-kind').value}; for (const id of ['rewrite','bm25','rerank','include_tests']) body[id] = $(id).checked;
   try {
     const response = await checked(await fetch(searchOnly ? '/search' : '/ask/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}));
     if (searchOnly) {
@@ -265,6 +284,13 @@ async function submit(searchOnly) {
 $('repo-picker').addEventListener('change', () => {
   selectedRepo = $('repo-picker').value; selectedMetadata();
   $('results').hidden = true; $('welcome').hidden = false; status('');
+});
+$('source-kind').addEventListener('change', selectedMetadata);
+$('open-repository').addEventListener('click', () => { $('add-repository').showModal(); $('repo-url').focus(); });
+$('close-repository').addEventListener('click', () => $('add-repository').close());
+$('add-repository').addEventListener('click', event => {
+  const box = event.currentTarget.getBoundingClientRect();
+  if (event.target === event.currentTarget && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) event.currentTarget.close();
 });
 $('index-form').addEventListener('submit', async event => {
   event.preventDefault(); if (indexing()) return;

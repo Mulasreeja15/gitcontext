@@ -1,14 +1,14 @@
 # Retrieval evaluation
 
-Repo: psf/requests, 45 labelled questions, ranks checked up to 10.
+Repo: psf/requests, 45 labelled questions, sources: code, ranks checked up to 10.
 
 | Configuration | Recall@1 | Recall@3 | Recall@5 | MRR@10 | Median latency |
 |---|---|---|---|---|---|
-| Vector only (Phase 1 baseline) | 60% | 69% | 76% | 0.680 | 17 ms |
-| Vector + test down-ranking | 69% | 76% | 91% | 0.750 | 17 ms |
-| Hybrid (vector + BM25, RRF) | 42% | 62% | 73% | 0.561 | 19 ms |
-| Hybrid + test down-ranking | 53% | 78% | 89% | 0.679 | 18 ms |
-| Hybrid + test down-ranking + rerank | 44% | 69% | 82% | 0.592 | 1243 ms |
+| Vector only (Phase 1 baseline) | 60% | 69% | 76% | 0.680 | 32 ms |
+| Vector + test down-ranking | 69% | 76% | 91% | 0.750 | 35 ms |
+| Hybrid (vector + BM25, RRF) | 42% | 62% | 73% | 0.561 | 70 ms |
+| Hybrid + test down-ranking | 53% | 78% | 89% | 0.679 | 69 ms |
+| Hybrid + test down-ranking + rerank | 44% | 69% | 82% | 0.592 | 1247 ms |
 
 ## Rank of first correct result per question
 
