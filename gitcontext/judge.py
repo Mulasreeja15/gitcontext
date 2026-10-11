@@ -64,10 +64,26 @@ def gold_context(payloads: list[dict], expected: list[str]) -> str:
     return '\n\n'.join(f"{p['file_path']}:{p['start_line']}-{p['end_line']}\n{p['text']}" for p in matches)
 
 
-def judge_answer(question: str, generated: str, hits: list, gold: str) -> dict:
+def truncate_context(text: str, limit: int) -> str:
+    """Bound context including the visible truncation marker."""
+    marker = '... [truncated]'
+    return text if len(text) <= limit else text[:max(0, limit - len(marker))] + marker
+
+
+def limited_sources(hits: list, limit: int) -> list:
+    """Copy source payloads with bounded text, preserving citation numbering."""
+    return [(score, {**payload, 'text': truncate_context(payload['text'], limit)})
+            for score, payload in hits]
+
+
+def judge_answer(question: str, generated: str, hits: list, gold: str,
+                 source_limit: int | None = None, gold_limit: int | None = None) -> dict:
     """Judge with temperature zero; retry malformed JSON exactly once."""
-    data = {'question': question, 'answer': generated, 'gold_context': gold,
-            'numbered_sources': answer.format_sources(hits)}
+    source_limit = config.JUDGE_MAX_SOURCE_CHARS if source_limit is None else source_limit
+    gold_limit = config.JUDGE_MAX_GOLD_CHARS if gold_limit is None else gold_limit
+    data = {'question': question, 'answer': generated,
+            'gold_context': truncate_context(gold, gold_limit),
+            'numbered_sources': answer.format_sources(limited_sources(hits, source_limit))}
     messages = [{'role': 'system', 'content': JUDGE_PROMPT},
                 {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)}]
     for attempt in range(2):
@@ -131,28 +147,44 @@ def evaluate_answers(questions: list[dict], rewrite: bool = False,
         for question in questions:
             text, expected = question['question'], question['expected']
             record = cache.get(text, name)
-            if record is None or record.get('expected') != expected:
-                if retriever is None:
-                    retriever = Retriever()
-                retriever.prepare(opts)
-                hits = retriever.retrieve(text, config.JUDGE_K, opts).hits
-                if payloads is None:
-                    # Use the retriever's existing VectorStore to avoid a second
-                    # local Qdrant client locking the same storage directory.
-                    payloads = [p for _, p in retriever.store.all_payloads()]
-                gold = gold_context(payloads, expected)
-                generated = answer.generate_answer(text, hits)
-                record = {'repo': config.DEFAULT_REPO, 'question': text, 'config': name, 'model': config.JUDGE_MODEL,
-                          'answer_model': config.LLM_MODEL, 'expected': expected,
-                          'answer': generated, 'hits': [[score, payload] for score, payload in hits],
-                          'gold': gold}
-                cache.save(record)
-            if 'judgment' not in record:
-                record = dict(record)
-                record['judgment'] = judge_answer(text, record['answer'], record['hits'], record['gold'])
-                cache.save(record)
+            if record is not None and record.get('expected') != expected:
+                record = None
+            for attempt in range(2):
+                source_limit = config.JUDGE_MAX_SOURCE_CHARS // (2 ** attempt)
+                gold_limit = config.JUDGE_MAX_GOLD_CHARS // (2 ** attempt)
+                try:
+                    if record is None:
+                        if retriever is None:
+                            retriever = Retriever()
+                        retriever.prepare(opts)
+                        hits = retriever.retrieve(text, config.JUDGE_K, opts).hits
+                        if payloads is None:
+                            # Reuse the existing client: local Qdrant locks storage.
+                            payloads = [p for _, p in retriever.store.all_payloads()]
+                        record = {'repo': config.DEFAULT_REPO, 'question': text, 'config': name,
+                                  'model': config.JUDGE_MODEL, 'answer_model': config.LLM_MODEL,
+                                  'expected': expected, 'hits': [[score, payload] for score, payload in hits],
+                                  'gold': gold_context(payloads, expected)}
+                    record = dict(record)
+                    if 'judgment' in record or record.get('status') == 'skipped: too large':
+                        break
+                    if 'answer' not in record:
+                        record['answer'] = answer.generate_answer(
+                            text, limited_sources(record['hits'], source_limit))
+                        cache.save(record)
+                    record['judgment'] = judge_answer(text, record['answer'], record['hits'],
+                                                     record['gold'], source_limit, gold_limit)
+                    cache.save(record)
+                    break
+                except answer.RequestTooLarge:
+                    if attempt:
+                        record = {**(record or {}), 'repo': config.DEFAULT_REPO, 'question': text,
+                                  'config': name, 'model': config.JUDGE_MODEL,
+                                  'answer_model': config.LLM_MODEL, 'expected': expected,
+                                  'status': 'skipped: too large'}
+                        cache.save(record)
             rows.append({**record, 'cites_correct_source': cites_correct_source(
-                record['answer'], record['hits'], expected)})
+                record.get('answer', ''), record.get('hits', []), expected)})
     return rows
 
 
@@ -167,19 +199,28 @@ def render_report(rows: list[dict]) -> str:
              f'Answer model: {config.LLM_MODEL}; judge model: {config.JUDGE_MODEL}.',
              'Scores are LLM estimates; correct-source citation is checked in Python.',
              'Cache is model/configuration specific. Use --no-cache after reindexing or changing prompts.', '',
-             '| Configuration | Mean correctness (1-5) | Mean faithfulness | Correct-source citations | Zero unsupported claims |',
-             '|---|---|---|---|---|']
+             f"Skipped questions: {sum(row.get('status') == 'skipped: too large' for row in rows)}. "
+             'Skipped questions are excluded from all score averages.', '',
+             '| Configuration | Mean correctness (1-5) | Mean faithfulness | Correct-source citations | Zero unsupported claims | Skipped |',
+             '|---|---|---|---|---|---|']
     for name in dict.fromkeys(row['config'] for row in rows):
-        group = [row for row in rows if row['config'] == name]
+        group = [row for row in rows if row['config'] == name and 'judgment' in row]
+        skipped = sum(row['config'] == name and row.get('status') == 'skipped: too large' for row in rows)
+        if not group:
+            lines.append(f'| {_cell(name)} | N/A | N/A | N/A | N/A | {skipped} |')
+            continue
         correctness = statistics.mean(row['judgment']['correctness'] for row in group)
         faithfulness = statistics.mean(row['judgment']['faithfulness'] for row in group)
         citations = statistics.mean(row['cites_correct_source'] for row in group)
         supported = statistics.mean(not row['judgment']['unsupported_claims'] for row in group)
-        lines.append(f'| {_cell(name)} | {correctness:.2f} | {faithfulness:.3f} | {citations:.1%} | {supported:.1%} |')
+        lines.append(f'| {_cell(name)} | {correctness:.2f} | {faithfulness:.3f} | {citations:.1%} | {supported:.1%} | {skipped} |')
     lines += ['', '## Per-question scores', '',
               '| Configuration | Question | Correctness | Faithfulness | Correct-source citation | Unsupported claims | Reasoning |',
               '|---|---|---|---|---|---|---|']
     for row in rows:
+        if row.get('status') == 'skipped: too large':
+            lines.append(f"| {_cell(row['config'])} | {_cell(row['question'])} | N/A | N/A | N/A | N/A | skipped: too large |")
+            continue
         score = row['judgment']
         values = [row['config'], row['question'], score['correctness'],
                   f"{score['faithfulness']:.3f}", row['cites_correct_source'],
@@ -187,7 +228,8 @@ def render_report(rows: list[dict]) -> str:
         lines.append('| ' + ' | '.join(_cell(value) for value in values) + ' |')
     lines += ['', '## Five lowest-scoring questions', '',
               'Ordered by correctness, then faithfulness; each configuration/question pair is scored separately.', '']
-    worst = sorted(rows, key=lambda row: (row['judgment']['correctness'], row['judgment']['faithfulness']))[:5]
+    worst = sorted((row for row in rows if 'judgment' in row),
+                   key=lambda row: (row['judgment']['correctness'], row['judgment']['faithfulness']))[:5]
     for row in worst:
         score = row['judgment']
         lines.append(f"- {_cell(row['question'])} ({_cell(row['config'])}): "

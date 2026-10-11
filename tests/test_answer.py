@@ -41,6 +41,18 @@ def test_chat_model_override():
     assert post.call_args.kwargs['json']['temperature'] == 0.0
 
 
+@pytest.mark.parametrize('stream', [False, True])
+def test_chat_413_is_recoverable_and_closes_response(stream):
+    reply = response(413)
+    with patch.object(answer.requests, 'post', return_value=reply) as post, \
+            patch.object(answer.time, 'sleep') as sleep:
+        with pytest.raises(answer.RequestTooLarge, match='413'):
+            answer._chat([], stream=stream)
+        post.assert_called_once()
+        sleep.assert_not_called()
+        reply.close.assert_called_once()
+
+
 @pytest.mark.parametrize('headers,wait', [({'retry-after': '2'}, 2), ({}, 5), ({'retry-after': '120'}, 60)])
 def test_chat_retries_429_then_succeeds(headers, wait):
     limited, success = response(429, headers=headers), response(content='ok')

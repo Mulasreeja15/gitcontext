@@ -28,6 +28,10 @@ Return ONLY the query, on one line, with no explanation and no quotes."""
 MAX_RETRIES = 6
 
 
+class RequestTooLarge(Exception):
+    """Groq rejected the request size; callers may retry with smaller context."""
+
+
 def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
           model: str | None = None, stream: bool = False, on_retry=None) -> str | Iterator[str]:
     """Call Groq with shared rate-limit retries and an optional model override."""
@@ -64,7 +68,7 @@ def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
             raise SystemExit("API key rejected (401). Check the key in your .env file.")
         if r.status_code == 413:
             r.close()
-            raise SystemExit("Request too large (413). Try fewer sources: add  -k 4  to your command.")
+            raise RequestTooLarge("Request too large (413). Try fewer or shorter sources.")
         try:
             r.raise_for_status()
         except requests.RequestException:

@@ -92,7 +92,7 @@ def test_cache_skips_generation_judging_and_retrieval(example, tmp_path):
         retriever.retrieve.assert_called_once()
         opts = retriever.retrieve.call_args.args[2]
         assert not opts.bm25 and not opts.rerank and opts.penalize_tests and not opts.rewrite
-        assert retriever.retrieve.call_args.args[1] == 6
+        assert retriever.retrieve.call_args.args[1] == config.JUDGE_K == 4
         assert first[0]['cites_correct_source']
     with patch.object(answer, 'generate_answer', side_effect=AssertionError('must be cached')), \
             patch.object(answer, '_chat', side_effect=AssertionError('must be cached')), \
@@ -150,3 +150,74 @@ def test_report_aggregates_and_orders_low_scores():
     worst = report.split('## Five lowest-scoring questions')[1]
     assert worst.index('Question 1') < worst.index('Question 5')
     assert worst.count('Mostly correct.') == 5
+
+
+
+def test_prompt_truncation_preserves_sources_and_gold(example):
+    _, hits, _ = example
+    long_hits = [(score, {**payload, 'text': 'x' * 4000}) for score, payload in hits]
+    with patch.object(answer, '_chat', return_value=json.dumps(SCORE)) as chat:
+        judge.judge_answer('question', 'answer', long_hits, 'g' * 5000)
+    data = json.loads(chat.call_args.args[0][1]['content'])
+    assert len(data['gold_context']) == config.JUDGE_MAX_GOLD_CHARS
+    assert data['gold_context'].endswith('... [truncated]')
+    assert data['numbered_sources'].count('... [truncated]') == 2
+    assert 'x' * config.JUDGE_MAX_SOURCE_CHARS not in data['numbered_sources']
+    assert '[1] other.py' in data['numbered_sources']
+    assert '[2] src/code.py' in data['numbered_sources']
+    assert long_hits[0][1]['text'] == 'x' * 4000
+    assert judge.truncate_context('short', 30) == 'short'
+
+
+def test_judge_413_retries_half_context_and_reuses_answer(example, tmp_path):
+    questions, _, retriever = example
+    payload = {**retriever.retrieve.return_value.hits[1][1], 'text': 'x' * 5000}
+    retriever.retrieve.return_value.hits = [(0.5, payload)]
+    retriever.store.all_payloads.return_value = [('gold', payload)]
+    with patch.object(answer, 'generate_answer', return_value='Answer [1]') as generate, \
+            patch.object(answer, '_chat', side_effect=[answer.RequestTooLarge(), json.dumps(SCORE)]) as chat:
+        rows = judge.evaluate_answers(questions, cache_path=tmp_path / 'cache', retriever=retriever)
+        generate.assert_called_once()
+        first, second = [json.loads(call.args[0][1]['content']) for call in chat.call_args_list]
+        assert len(first['gold_context']) == 3000
+        assert len(second['gold_context']) == 1500
+        assert 'x' * 750 not in second['numbered_sources']
+        assert rows[0]['judgment'] == SCORE
+
+
+def test_413_skips_continues_and_caches_terminal_results(example, tmp_path):
+    questions, _, retriever = example
+    questions = questions + [{**questions[0], 'question': 'Next question'}]
+    cache = tmp_path / 'cache'
+    with patch.object(answer, 'generate_answer', return_value='Answer [2]'), \
+            patch.object(answer, '_chat', side_effect=[answer.RequestTooLarge(), answer.RequestTooLarge(), json.dumps(SCORE)]) as chat:
+        rows = judge.evaluate_answers(questions, cache_path=cache, retriever=retriever)
+        assert chat.call_count == 3
+    assert rows[0]['status'] == 'skipped: too large'
+    assert 'judgment' not in rows[0]
+    assert rows[1]['judgment'] == SCORE
+    report = judge.render_report(rows)
+    assert 'Skipped questions: 1' in report
+    assert 'skipped: too large' in report
+    assert '| 4.00 | 0.750 | 100.0% | 0.0% | 1 |' in report
+    assert 'Next question' in report.split('## Five lowest-scoring questions')[1]
+    assert 'What does work do?' not in report.split('## Five lowest-scoring questions')[1]
+    with patch.object(answer, '_chat', side_effect=AssertionError('cached')), \
+            patch.object(answer, 'generate_answer', side_effect=AssertionError('cached')):
+        assert judge.evaluate_answers(questions, cache_path=cache, retriever=retriever) == rows
+    assert 'N/A' in judge.render_report(rows[:1])
+
+
+@pytest.mark.parametrize('succeeds', [True, False])
+def test_answer_generation_413_uses_smaller_sources(example, tmp_path, succeeds):
+    questions, _, retriever = example
+    payload = {**retriever.retrieve.return_value.hits[1][1], 'text': 'x' * 4000}
+    retriever.retrieve.return_value.hits = [(0.5, payload)]
+    effects = [answer.RequestTooLarge(), 'Answer [1]' if succeeds else answer.RequestTooLarge()]
+    with patch.object(answer, 'generate_answer', side_effect=effects) as generate, \
+            patch.object(answer, '_chat', return_value=json.dumps(SCORE)) as chat:
+        rows = judge.evaluate_answers(questions, cache_path=tmp_path / 'cache', retriever=retriever)
+        assert [len(call.args[1][0][1]['text']) for call in generate.call_args_list] == [1500, 750]
+        assert chat.call_count == int(succeeds)
+    if not succeeds:
+        assert rows[0]['status'] == 'skipped: too large'
