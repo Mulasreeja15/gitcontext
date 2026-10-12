@@ -51,20 +51,28 @@ Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with 
 
 ### Answer quality: LLM judge
 
-The judge measures correctness (1–5) against labelled gold context, faithfulness (0–1) to supplied sources, correct-source citation rate, and the fraction of answers with zero unsupported claims.
+Compared both prompts on the same 45-question code set using the [cached answer-quality report](eval/judge_results.md). Both generation and judging use `openai/gpt-oss-120b`; correct-source citations and gold retrieval are checked deterministically in Python. **Strict is now the default answer prompt**, selected for better grounding rather than the highest raw judge score.
 
-Current results for the 45-question code set, from the [answer-quality report](eval/judge_results.md). Both generation and judging use `openai/gpt-oss-120b`; correct-source citations are checked deterministically in Python. Skipped questions are excluded from score averages.
-
-| Configuration | Mean correctness (1-5) | Mean faithfulness | Correct-source citations | Zero unsupported claims | Skipped |
+| Answer prompt | Overall correctness (1–5) | Mean faithfulness | Correct-source citations | Zero unsupported claims | Skipped |
 |---|---|---|---|---|---|
-| vector + test down-ranking | 4.67 | 0.852 | 75.6% | 53.3% | 0 |
+| Default (original) | 4.67 | 0.852 | 75.6% | 53.3% | 0 |
+| **Strict (new default)** | 4.47 | **0.875** | **77.8%** | **60.0%** | 0 |
+
+Correctness is also separated by whether any retrieved hit matched the expected labels. The answering model never sees the judge's gold context unless it was retrieved. No-gold scores are raw judge estimates, **not generation-error rates**.
+
+| Answer prompt | Correctness: gold retrieved (35 questions) | Correctness: no gold retrieved (10 questions) | honest_abstain among no-gold cases |
+|---|---|---|---|
+| Default (original) | 4.80 | 4.20 | 3 |
+| **Strict (new default)** | 4.77 | 3.40 | 5 |
+
+`honest_abstain` flags an explicit statement that the supplied sources do not show the answer when no gold-labelled hit was retrieved. It is a text-based heuristic: acknowledging missing evidence does not certify every other claim. Skipped questions are excluded from averages; cached judge scores were not rewritten.
 
 **What the judge revealed**
 
-- Answers are usually correct, but about 15% of claims are not backed by the cited sources: the LLM adds knowledge from training, such as urllib3 internals.
-- A citation-parser bug initially reported only 51% correct-source citations. Investigating the suspicious result fixed the rate to 75.6%; the remaining misses cite valid code outside the narrow evaluation labels.
-- The “hooks” question misses the retrieval labels but is answered correctly from documentation, showing that retrieval metrics can underestimate the system.
-- A manual spot-check found that the judge marked an off-topic answer to the `.netrc` password question as correct. Judge scores are estimates, and using the same model to generate and judge is a known source of bias; a different `JUDGE_MODEL` can reduce self-preference bias.
+- The strict prompt reduces unsupported claims: mean faithfulness rose from 0.852 to 0.875, and the fraction of answers with no unsupported claims rose from 53.3% to 60.0%. It still sometimes adds unsupported knowledge, including details about urllib3 internals.
+- Strict surfaces some retrieval failures honestly instead of filling gaps from training knowledge. For `Session.send`, the gold implementation was not retrieved: strict explicitly states this, yet the original judge gave it correctness 1. The original judge penalized honest abstentions by comparing answers against gold context the answering model never saw. Correctness with gold retrieved barely changed (4.80 to 4.77), while the lower no-gold score explains most of the overall drop.
+- A citation-parser bug initially reported only 51% correct-source citations for the original prompt. Investigating the suspicious result fixed the rate to 75.6%; remaining misses can cite valid code or documentation outside the narrow labels. The “hooks” question misses the retrieval labels but is answered correctly from documentation, showing that retrieval metrics can underestimate the system.
+- A manual spot-check found that the original judge marked an off-topic answer to the `.netrc` password question as correct. Judge scores remain estimates, and using the same model to generate and judge is a known bias; a different `JUDGE_MODEL` can reduce self-preference bias. The cached comparison is a small single-repository experiment, not proof that strict wins universally. Two original answers used six sources before the four-source cap; all strict answers used four, so this is not a fully controlled prompt-only comparison.
 
 ### History retrieval: 8 questions
 

@@ -65,6 +65,34 @@ def gold_context(payloads: list[dict], expected: list[str]) -> str:
     return '\n\n'.join(f"{p['file_path']}:{p['start_line']}-{p['end_line']}\n{p['text']}" for p in matches)
 
 
+def gold_retrieved(hits: list, expected: list[str]) -> bool:
+    """Whether any original retrieved chunk matches an unchanged gold label."""
+    from evaluate import is_match
+    return any(is_match(payload, label) for _, payload in hits for label in expected)
+
+
+def explicitly_abstains(text: str) -> bool:
+    """Detect explicit source-insufficiency statements, not semantic correctness."""
+    text = re.sub(r'\s+', ' ', text.lower().replace('’', "'").replace('**', ''))
+    source = r'(?:sources?|snippets?|excerpts?|files?|code)\b'
+    negative = r"(?:do not|don't|does not|doesn't|cannot|can't)"
+    missing = r'(?:show|include|contain|provide|reveal)'
+    return bool(re.search(source + r'.{0,70}?' + negative + r'\s+' + missing, text)
+                or re.search(r"(?:not|isn't|wasn't) (?:included|shown|present|available).{0,100}?" + source, text)
+                or re.search(r'(?:answer|reason|explanation).{0,50}?cannot be (?:determined|derived).{0,80}?' + source, text))
+
+
+def classify_answer(record: dict) -> dict:
+    """Derive retrieval and abstention fields without changing cached LLM grades."""
+    hits, expected = record.get('hits', []), record.get('expected', [])
+    found = gold_retrieved(hits, expected)
+    abstain = not found and explicitly_abstains(record.get('answer', ''))
+    category = ('skipped: too large' if record.get('status') == 'skipped: too large'
+                else 'honest_abstain' if abstain else 'answered' if found else 'no_gold_retrieved')
+    return {**record, 'gold_retrieved': found, 'category': category,
+            'cites_correct_source': cites_correct_source(record.get('answer', ''), hits, expected)}
+
+
 def truncate_context(text: str, limit: int) -> str:
     """Bound context including the visible truncation marker."""
     marker = '... [truncated]'
@@ -116,12 +144,16 @@ class JudgeCache:
     @staticmethod
     def key(record: dict) -> tuple:
         """Separate configurations and judge models, and track the answer model too."""
-        return (record.get('repo', config.DEFAULT_REPO), record['question'], record['config'],
-                record['model'], record['answer_model'])
+        # Older records were generated with the original/default prompt.
+        return (record.get('repo', config.DEFAULT_REPO), record['question'],
+                retrieval_config(record['config']), record['model'], record['answer_model'],
+                record.get('prompt', 'default'))
 
-    def get(self, question: str, name: str) -> dict | None:
+    def get(self, question: str, name: str, prompt: str | None = None) -> dict | None:
         """Look up this configuration under the current generation/judge models."""
-        return self.records.get((self.repo, question, name, config.JUDGE_MODEL, config.LLM_MODEL))
+        variant = config.ANSWER_PROMPT if prompt is None else prompt
+        return self.records.get((self.repo, question, retrieval_config(name),
+                                 config.JUDGE_MODEL, config.LLM_MODEL, variant))
 
     def save(self, record: dict) -> None:
         """Persist immediately so reruns need not repeat completed LLM calls."""
@@ -133,21 +165,33 @@ class JudgeCache:
         self.records[self.key(record)] = dict(record)
 
 
+def retrieval_config(name: str) -> str:
+    """Remove the display-only prompt suffix when looking up legacy cache keys."""
+    return re.sub(r' \(prompt: (?:default|strict)\)$', '', name)
+
+
+def configuration_name(name: str, prompt: str) -> str:
+    """Identify the retrieval configuration and answer prompt in reports."""
+    return f'{retrieval_config(name)} (prompt: {prompt})'
+
+
 def evaluate_answers(questions: list[dict], rewrite: bool = False,
                      no_cache: bool = False, cache_path: Path | None = None,
-                     retriever=None) -> list[dict]:
+                     retriever=None, prompt: str | None = None) -> list[dict]:
     """Evaluate default retrieval, optionally rewriting, reusing partial/full cache."""
     from .retriever import RetrievalOptions, Retriever
+    variant = config.ANSWER_PROMPT if prompt is None else prompt
+    answer.system_prompt(variant)  # validate even when every answer is cached
     cache = JudgeCache(cache_path or config.JUDGE_CACHE_PATH, enabled=not no_cache)
     configurations = [RetrievalOptions()]
     if rewrite:
         configurations.append(RetrievalOptions(rewrite=True))
     rows, payloads = [], None
     for opts in configurations:
-        name = opts.describe()
+        name = configuration_name(opts.describe(), variant)
         for question in questions:
             text, expected = question['question'], question['expected']
-            record = cache.get(text, name)
+            record = cache.get(text, name, prompt=variant)
             if record is not None and record.get('expected') != expected:
                 record = None
             for attempt in range(2):
@@ -163,15 +207,16 @@ def evaluate_answers(questions: list[dict], rewrite: bool = False,
                             # Reuse the existing client: local Qdrant locks storage.
                             payloads = [p for _, p in retriever.store.all_payloads()]
                         record = {'repo': config.DEFAULT_REPO, 'question': text, 'config': name,
-                                  'model': config.JUDGE_MODEL, 'answer_model': config.LLM_MODEL,
+                                  'model': config.JUDGE_MODEL, 'answer_model': config.LLM_MODEL, 'prompt': variant,
                                   'expected': expected, 'hits': [[score, payload] for score, payload in hits],
                                   'gold': gold_context(payloads, expected)}
                     record = dict(record)
+                    record.update(config=name, prompt=variant)
                     if 'judgment' in record or record.get('status') == 'skipped: too large':
                         break
                     if 'answer' not in record:
                         record['answer'] = answer.generate_answer(
-                            text, limited_sources(record['hits'], source_limit))
+                            text, limited_sources(record['hits'], source_limit), prompt_variant=variant)
                         cache.save(record)
                     record['judgment'] = judge_answer(text, record['answer'], record['hits'],
                                                      record['gold'], source_limit, gold_limit)
@@ -182,11 +227,37 @@ def evaluate_answers(questions: list[dict], rewrite: bool = False,
                         record = {**(record or {}), 'repo': config.DEFAULT_REPO, 'question': text,
                                   'config': name, 'model': config.JUDGE_MODEL,
                                   'answer_model': config.LLM_MODEL, 'expected': expected,
+                                  'prompt': variant,
                                   'status': 'skipped: too large'}
                         cache.save(record)
-            rows.append({**record, 'cites_correct_source': cites_correct_source(
-                record.get('answer', ''), record.get('hits', []), expected)})
+            rows.append(classify_answer(record))
     return rows
+
+
+def comparison_rows(questions: list[dict], rows: list[dict],
+                    cache_path: Path | None = None, no_cache: bool = False) -> list[dict]:
+    """Include completed cached results of the other prompt, without LLM calls."""
+    if no_cache:
+        return rows
+    cache = JudgeCache(cache_path or config.JUDGE_CACHE_PATH)
+    combined = {(row['question'], row['config']): row for row in rows}
+    names = list(dict.fromkeys(retrieval_config(row['config']) for row in rows))
+    for name in names:
+        for variant in ('default', 'strict'):
+            for question in questions:
+                text, expected = question['question'], question['expected']
+                key = (text, configuration_name(name, variant))
+                if key in combined:
+                    continue
+                record = cache.get(text, name, prompt=variant)
+                if not record or record.get('expected') != expected:
+                    continue
+                if 'judgment' not in record and record.get('status') != 'skipped: too large':
+                    continue
+                combined[key] = classify_answer({**record, 'config': key[1], 'prompt': variant})
+    return sorted(combined.values(), key=lambda row: (
+        names.index(retrieval_config(row['config'])), row.get('prompt', 'default'),
+        next(i for i, q in enumerate(questions) if q['question'] == row['question'])))
 
 
 def _cell(value) -> str:
@@ -196,10 +267,12 @@ def _cell(value) -> str:
 
 def render_report(rows: list[dict]) -> str:
     """Summarize configurations, list every score, and highlight the worst five."""
+    rows = [classify_answer(row) for row in rows]
     lines = ['# Answer-quality evaluation', '',
              f'Answer model: {config.LLM_MODEL}; judge model: {config.JUDGE_MODEL}.',
              'Scores are LLM estimates; correct-source citation is checked in Python.',
-             'Cache is model/configuration specific. Use --no-cache after reindexing or changing prompts.', '',
+             'Cache is model/configuration/prompt specific. Use --no-cache after reindexing or changing prompt text.',
+             'Comparison includes completed cached results for the other prompt; partial runs may have different sample counts.', '',
              f"Skipped questions: {sum(row.get('status') == 'skipped: too large' for row in rows)}. "
              'Skipped questions are excluded from all score averages.', '',
              '| Configuration | Mean correctness (1-5) | Mean faithfulness | Correct-source citations | Zero unsupported claims | Skipped |',
@@ -215,21 +288,41 @@ def render_report(rows: list[dict]) -> str:
         citations = statistics.mean(row['cites_correct_source'] for row in group)
         supported = statistics.mean(not row['judgment']['unsupported_claims'] for row in group)
         lines.append(f'| {_cell(name)} | {correctness:.2f} | {faithfulness:.3f} | {citations:.1%} | {supported:.1%} | {skipped} |')
+    lines += ['', '## Correctness separated by retrieval outcome', '',
+              'Generation correctness is assessed separately on questions where a gold-labelled chunk was retrieved. '
+              'No-gold correctness is the original cached judge grade, not a generation-error rate. '
+              'The original judge compared every answer against gold context the answering model may never have seen; '
+              'honest abstentions can therefore receive low raw correctness.', '',
+              '`gold_retrieved` checks label membership in the original hit list. Labels may miss valid alternative code or documentation. '
+              '`honest_abstain` is a deterministic heuristic for an explicit source-insufficiency statement when gold was not retrieved; '
+              'it does not certify that every other claim is supported. Cached LLM scores are unchanged.', '',
+              '| Configuration | Gold retrieved (n) | Correctness: gold retrieved | Gold not retrieved (n) | Correctness: no gold | honest_abstain (n) |',
+              '|---|---|---|---|---|---|']
+    for name in dict.fromkeys(row['config'] for row in rows):
+        group = [row for row in rows if row['config'] == name and 'judgment' in row]
+        found = [row for row in group if row['gold_retrieved']]
+        missing = [row for row in group if not row['gold_retrieved']]
+        found_score = f"{statistics.mean(row['judgment']['correctness'] for row in found):.2f}" if found else 'N/A'
+        missing_score = f"{statistics.mean(row['judgment']['correctness'] for row in missing):.2f}" if missing else 'N/A'
+        abstentions = sum(row['category'] == 'honest_abstain' for row in missing)
+        lines.append(f'| {_cell(name)} | {len(found)} | {found_score} | {len(missing)} | {missing_score} | {abstentions} |')
     lines += ['', '## Per-question scores', '',
-              '| Configuration | Question | Correctness | Faithfulness | Correct-source citation | Unsupported claims | Reasoning |',
-              '|---|---|---|---|---|---|---|']
+              '| Configuration | Question | gold_retrieved | Category | Correctness | Faithfulness | Correct-source citation | Unsupported claims | Reasoning |',
+              '|---|---|---|---|---|---|---|---|---|']
     for row in rows:
         if row.get('status') == 'skipped: too large':
-            lines.append(f"| {_cell(row['config'])} | {_cell(row['question'])} | N/A | N/A | N/A | N/A | skipped: too large |")
+            lines.append(f"| {_cell(row['config'])} | {_cell(row['question'])} | {'yes' if row['gold_retrieved'] else 'no'} | skipped: too large | N/A | N/A | N/A | N/A | skipped: too large |")
             continue
         score = row['judgment']
-        values = [row['config'], row['question'], score['correctness'],
+        values = [row['config'], row['question'], 'yes' if row['gold_retrieved'] else 'no',
+                  row['category'], score['correctness'],
                   f"{score['faithfulness']:.3f}", row['cites_correct_source'],
                   '; '.join(score['unsupported_claims']) or 'None', score['reasoning']]
         lines.append('| ' + ' | '.join(_cell(value) for value in values) + ' |')
     lines += ['', '## Five lowest-scoring questions', '',
-              'Ordered by correctness, then faithfulness; each configuration/question pair is scored separately.', '']
-    worst = sorted((row for row in rows if 'judgment' in row),
+              'Gold-retrieved questions only, ordered by correctness, then faithfulness; '
+              'no-gold cases are kept separate from generation mistakes.', '']
+    worst = sorted((row for row in rows if 'judgment' in row and row['gold_retrieved']),
                    key=lambda row: (row['judgment']['correctness'], row['judgment']['faithfulness']))[:5]
     for row in worst:
         score = row['judgment']

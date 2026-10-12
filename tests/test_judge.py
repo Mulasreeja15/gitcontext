@@ -158,6 +158,9 @@ def test_no_cache_neither_reads_nor_writes(example, tmp_path):
 
 def test_report_aggregates_and_orders_low_scores():
     rows = [{'config': 'vector', 'question': f'Question {i}|extra',
+             'expected': ['src/code.py'],
+             'hits': [(1.0, {'file_path': 'src/code.py', 'name': 'work', 'text': 'def work(): pass'})],
+             'answer': 'Claim [1]' if i % 2 == 1 else 'No citation',
              'judgment': {**SCORE, 'correctness': i, 'faithfulness': 1.0,
                           'unsupported_claims': []}, 'cites_correct_source': i % 2 == 1}
             for i in range(1, 6)]
@@ -258,3 +261,130 @@ def test_completed_judgment_is_saved_before_next_question_crashes(example, tmp_p
         rows = judge.evaluate_answers(questions, cache_path=path, retriever=retriever)
     chat.assert_called_once()
     assert len(rows) == 2
+
+
+
+def test_prompt_variants_have_distinct_cache_keys_and_reports(example, tmp_path):
+    questions, _, retriever = example
+    path = tmp_path / 'cache.jsonl'
+    with patch.object(answer, '_chat', side_effect=['Default [2]', json.dumps(SCORE),
+                                                 'Strict [2]', json.dumps(SCORE)]) as chat:
+        default = judge.evaluate_answers(questions, cache_path=path, retriever=retriever, prompt='default')
+        strict = judge.evaluate_answers(questions, cache_path=path, retriever=retriever, prompt='strict')
+        assert chat.call_args_list[0].args[0][0]['content'] == answer.SYSTEM_PROMPT
+        assert chat.call_args_list[2].args[0][0]['content'] == answer.STRICT_SYSTEM_PROMPT
+        assert chat.call_count == 4
+    assert default[0]['config'].endswith('(prompt: default)')
+    assert strict[0]['config'].endswith('(prompt: strict)')
+    assert judge.JudgeCache.key(default[0]) != judge.JudgeCache.key({**default[0], 'prompt': 'strict'})
+    with patch.object(answer, '_chat', side_effect=AssertionError('already cached')), \
+            patch.object(answer, 'generate_answer', side_effect=AssertionError('already cached')):
+        assert judge.evaluate_answers(questions, cache_path=path, retriever=retriever, prompt='strict') == strict
+        combined = judge.comparison_rows(questions, strict, cache_path=path)
+    assert len(combined) == 2
+    report = judge.render_report(combined)
+    assert '(prompt: default)' in report and '(prompt: strict)' in report
+    assert judge.comparison_rows(questions, strict, cache_path=path, no_cache=True) == strict
+
+
+def test_legacy_cache_is_default_only_and_needs_no_llm(example, tmp_path):
+    from gitcontext.retriever import RetrievalOptions
+    questions, hits, _ = example
+    path = tmp_path / 'cache.jsonl'
+    legacy = {'question': questions[0]['question'], 'expected': questions[0]['expected'],
+              'config': RetrievalOptions().describe(), 'model': config.JUDGE_MODEL,
+              'answer_model': config.LLM_MODEL, 'hits': hits, 'answer': 'Answer [2]',
+              'gold': 'gold', 'judgment': SCORE}
+    cache = judge.JudgeCache(path)
+    cache.save(legacy)
+    assert cache.get(legacy['question'], legacy['config'], prompt='strict') is None
+    assert cache.get(legacy['question'], legacy['config'], prompt='default') == legacy
+    with patch.object(answer, '_chat', side_effect=AssertionError('legacy cached')), \
+            patch('gitcontext.retriever.Retriever', side_effect=AssertionError('legacy cached')):
+        rows = judge.evaluate_answers(questions, cache_path=path, prompt='default')
+    assert rows[0]['config'].endswith('(prompt: default)')
+    assert rows[0]['prompt'] == 'default' and rows[0]['judgment'] == SCORE
+
+
+def test_cached_comparison_excludes_changed_labels_and_partial_results(example, tmp_path):
+    questions, _, retriever = example
+    path = tmp_path / 'cache.jsonl'
+    with patch.object(answer, 'generate_answer', return_value='Answer [2]'), \
+            patch.object(answer, '_chat', return_value=json.dumps(SCORE)):
+        strict = judge.evaluate_answers(questions, cache_path=path, retriever=retriever, prompt='strict')
+    cache = judge.JudgeCache(path)
+    record = {**strict[0], 'prompt': 'default', 'config': strict[0]['config'].replace('strict', 'default')}
+    record.pop('judgment')
+    cache.save(record)
+    assert judge.comparison_rows(questions, strict, cache_path=path) == strict
+    cache.save({**record, 'judgment': SCORE, 'expected': ['changed.py']})
+    assert judge.comparison_rows(questions, strict, cache_path=path) == strict
+
+
+def test_judge_cli_forwards_prompt_without_llm(example, tmp_path, monkeypatch):
+    import ast
+    import argparse
+    from unittest.mock import Mock
+    source = config.PROJECT_ROOT / 'judge.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    evaluate = Mock(return_value=[])
+    compare = Mock(return_value=[])
+    namespace = {'argparse': argparse, 'config': config, '__doc__': 'judge',
+                 'evaluate_answers': evaluate, 'comparison_rows': compare,
+                 'render_report': Mock(return_value='mock report')}
+    monkeypatch.setattr(config, 'JUDGE_RESULTS_PATH', tmp_path / 'report.md')
+    exec(compile(ast.Module(body=[main], type_ignores=[]), str(source), 'exec'), namespace)
+    with patch('sys.argv', ['judge.py', '--prompt', 'strict', '--limit', '1']), \
+            patch('evaluate.load_questions', return_value=example[0]):
+        namespace['main']()
+    assert evaluate.call_args.kwargs['prompt'] == 'strict'
+    assert compare.call_args.kwargs == {'no_cache': False}
+
+
+
+@pytest.mark.parametrize('text,expected', [
+    ("The provided sources don't show how this works.", True),
+    ('The supplied source excerpts do not include the implementation.', True),
+    ('The code you’ve shown does not contain the password lookup.', True),
+    ('The implementation is not shown in the provided sources.', True),
+    ('The reason cannot be determined from the given files.', True),
+    ('The sources show a working implementation [1].', False),
+    ('I do not know the answer.', False),
+])
+def test_explicit_abstention_detection(text, expected):
+    assert judge.explicitly_abstains(text) is expected
+
+
+def test_gold_retrieval_and_honest_abstention_are_separate(example):
+    questions, hits, _ = example
+    record = {'question': questions[0]['question'], 'expected': questions[0]['expected'],
+              'hits': hits, 'answer': "The provided sources don't show the implementation.",
+              'judgment': SCORE, 'config': 'vector'}
+    found = judge.classify_answer(record)
+    assert found['gold_retrieved']
+    assert found['category'] != 'honest_abstain'
+    missing = judge.classify_answer({**record, 'hits': [hits[0]]})
+    assert not missing['gold_retrieved']
+    assert missing['category'] == 'honest_abstain'
+    assert missing['judgment'] is SCORE
+    assert record['hits'] == hits and 'category' not in record
+    alternative = judge.classify_answer({**record, 'hits': [hits[0]], 'answer': 'Alternate implementation [1]'})
+    assert alternative['category'] == 'no_gold_retrieved'
+
+
+def test_report_separates_gold_and_excludes_abstentions_from_generation_worst(example):
+    questions, hits, _ = example
+    base = {'expected': questions[0]['expected'], 'hits': hits, 'config': 'vector',
+            'answer': 'Correct [2]', 'judgment': {**SCORE, 'correctness': 5}}
+    abstain = {**base, 'hits': [hits[0]], 'question': 'Missing implementation',
+               'answer': "The provided sources don't show the answer.",
+               'judgment': {**SCORE, 'correctness': 1}}
+    found = {**base, 'question': 'Retrieved implementation'}
+    report = judge.render_report([found, abstain])
+    assert '| vector | 1 | 5.00 | 1 | 1.00 | 1 |' in report
+    assert '| Missing implementation | no | honest_abstain | 1 |' in report
+    assert 'gold_retrieved' in report
+    worst = report.split('## Five lowest-scoring questions')[1]
+    assert 'Retrieved implementation' in worst and 'Missing implementation' not in worst
+    assert abstain['judgment']['correctness'] == 1

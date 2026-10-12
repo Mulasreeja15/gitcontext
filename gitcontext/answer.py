@@ -25,6 +25,23 @@ Write the identifiers, function names, class names and technical terms most like
 in the source code that answers the question.
 Return ONLY the query, on one line, with no explanation and no quotes."""
 
+STRICT_SYSTEM_PROMPT = SYSTEM_PROMPT + """
+Strict grounding requirements:
+- Only state facts that appear in the numbered sources.
+- Every sentence with a factual claim must end with a citation such as [1].
+- If the sources do not show something, explicitly say "the provided sources don't show X", replacing X with the missing information.
+- Never fill gaps with general knowledge or knowledge from training.
+- Do not describe code that is not in the sources, including urllib3 internals.
+- Do not assume an implementation from a function name, a call site, or general library behavior."""
+
+
+def system_prompt(variant: str | None = None) -> str:
+    """Select a validated answer prompt without changing global settings."""
+    variant = config.ANSWER_PROMPT if variant is None else variant
+    if variant not in {'default', 'strict'}:
+        raise ValueError('Answer prompt must be default or strict')
+    return STRICT_SYSTEM_PROMPT if variant == 'strict' else SYSTEM_PROMPT
+
 MAX_RETRIES = 6
 SESSION = requests.Session()
 
@@ -193,18 +210,20 @@ def format_sources(hits: list[tuple[float, dict]]) -> str:
     return "\n\n".join(blocks)
 
 
-def _answer_messages(question: str, hits: list[tuple[float, dict]]) -> list[dict]:
+def _answer_messages(question: str, hits: list[tuple[float, dict]],
+                     prompt_variant: str | None = None) -> list[dict]:
     """Use identical grounding prompts for buffered and streaming answers."""
     prompt = f"Sources:\n\n{format_sources(hits)}\n\nQuestion: {question}"
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt(prompt_variant)},
         {"role": "user", "content": prompt},
     ]
 
 
-def generate_answer(question: str, hits: list[tuple[float, dict]]) -> str:
+def generate_answer(question: str, hits: list[tuple[float, dict]],
+                    prompt_variant: str | None = None) -> str:
     """Generate a complete answer through the shared retrying Groq client."""
-    return _chat(_answer_messages(question, hits))
+    return _chat(_answer_messages(question, hits, prompt_variant))
 
 
 def stream_answer(question: str, hits: list[tuple[float, dict]], on_retry=None) -> Iterator[str]:

@@ -157,7 +157,8 @@ def test_rewrite_and_judge_caches_are_per_repo(tmp_path):
     path = tmp_path / 'judge.jsonl'
     cache = judge.JudgeCache(path, repo='owner/a')
     record = {'repo': 'owner/a', 'question': 'q', 'config': 'vector',
-              'model': config.JUDGE_MODEL, 'answer_model': config.LLM_MODEL}
+              'model': config.JUDGE_MODEL, 'answer_model': config.LLM_MODEL,
+              'prompt': config.ANSWER_PROMPT}
     cache.save(record)
     assert judge.JudgeCache(path, repo='owner/a').get('q', 'vector') == record
     assert judge.JudgeCache(path, repo='owner/b').get('q', 'vector') is None

@@ -83,3 +83,35 @@ def test_chat_retry_exhaustion():
             answer._chat([])
         assert post.call_count == answer.MAX_RETRIES
         assert sleep.call_count == answer.MAX_RETRIES
+
+
+
+@pytest.mark.parametrize('variant', ['default', 'strict'])
+def test_config_selects_same_buffered_and_streaming_prompt(monkeypatch, variant):
+    monkeypatch.setattr(config, 'ANSWER_PROMPT', variant)
+    expected = answer.SYSTEM_PROMPT if variant == 'default' else answer.STRICT_SYSTEM_PROMPT
+    with patch.object(answer, '_chat', return_value='mock') as chat:
+        answer.generate_answer('question', [])
+        buffered = chat.call_args.args[0]
+        answer.stream_answer('question', [])
+        streamed = chat.call_args.args[0]
+    assert buffered == streamed
+    assert buffered[0]['content'] == expected
+
+
+def test_explicit_prompt_override_does_not_mutate_config(monkeypatch):
+    monkeypatch.setattr(config, 'ANSWER_PROMPT', 'default')
+    with patch.object(answer, '_chat', return_value='mock') as chat:
+        answer.generate_answer('question', [], prompt_variant='strict')
+    assert chat.call_args.args[0][0]['content'] == answer.STRICT_SYSTEM_PROMPT
+    assert config.ANSWER_PROMPT == 'default'
+    assert "the provided sources don't show X" in answer.STRICT_SYSTEM_PROMPT
+    assert 'Every sentence with a factual claim must end with a citation' in answer.STRICT_SYSTEM_PROMPT
+    assert 'urllib3 internals' in answer.STRICT_SYSTEM_PROMPT
+
+
+def test_invalid_answer_prompt_fails_without_llm(monkeypatch):
+    monkeypatch.setattr(config, 'ANSWER_PROMPT', 'invalid')
+    with patch.object(answer, '_chat', side_effect=AssertionError('must not call')):
+        with pytest.raises(ValueError, match='default or strict'):
+            answer.generate_answer('question', [])

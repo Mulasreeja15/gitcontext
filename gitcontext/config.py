@@ -51,6 +51,7 @@ TEST_RERANK_PENALTY = 3.0    # subtracted from the reranker score for test files
 # LLM that writes answers and rewrites queries (Groq, free tier)
 LLM_URL = "https://api.groq.com/openai/v1/chat/completions"
 LLM_MODEL = "openai/gpt-oss-120b"
+ANSWER_PROMPT = "strict"  # "default" or "strict"; strict improved cached grounding
 JUDGE_MODEL = LLM_MODEL  # a different judge model reduces self-preference bias
 JUDGE_CACHE_PATH = Path("eval/judge_cache.jsonl")
 JUDGE_RESULTS_PATH = Path("eval/judge_results.md")
