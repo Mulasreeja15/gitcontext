@@ -217,9 +217,11 @@ def evaluate_answers(questions: list[dict], rewrite: bool = False,
                     if 'answer' not in record:
                         record['answer'] = answer.generate_answer(
                             text, limited_sources(record['hits'], source_limit), prompt_variant=variant)
+                        record = classify_answer(record)
                         cache.save(record)
                     record['judgment'] = judge_answer(text, record['answer'], record['hits'],
                                                      record['gold'], source_limit, gold_limit)
+                    record = classify_answer(record)
                     cache.save(record)
                     break
                 except answer.RequestTooLarge:
@@ -288,7 +290,7 @@ def render_report(rows: list[dict]) -> str:
         citations = statistics.mean(row['cites_correct_source'] for row in group)
         supported = statistics.mean(not row['judgment']['unsupported_claims'] for row in group)
         lines.append(f'| {_cell(name)} | {correctness:.2f} | {faithfulness:.3f} | {citations:.1%} | {supported:.1%} | {skipped} |')
-    lines += ['', '## Correctness separated by retrieval outcome', '',
+    lines += ['', '## Correctness and faithfulness separated by retrieval outcome', '',
               'Generation correctness is assessed separately on questions where a gold-labelled chunk was retrieved. '
               'No-gold correctness is the original cached judge grade, not a generation-error rate. '
               'The original judge compared every answer against gold context the answering model may never have seen; '
@@ -296,16 +298,19 @@ def render_report(rows: list[dict]) -> str:
               '`gold_retrieved` checks label membership in the original hit list. Labels may miss valid alternative code or documentation. '
               '`honest_abstain` is a deterministic heuristic for an explicit source-insufficiency statement when gold was not retrieved; '
               'it does not certify that every other claim is supported. Cached LLM scores are unchanged.', '',
-              '| Configuration | Gold retrieved (n) | Correctness: gold retrieved | Gold not retrieved (n) | Correctness: no gold | honest_abstain (n) |',
-              '|---|---|---|---|---|---|']
+              '| Configuration | Gold retrieved (n) | Correctness: gold retrieved | Faithfulness: gold retrieved | Gold not retrieved (n) | Correctness: no gold | Faithfulness: no gold | honest_abstain (n) |',
+              '|---|---|---|---|---|---|---|---|']
     for name in dict.fromkeys(row['config'] for row in rows):
         group = [row for row in rows if row['config'] == name and 'judgment' in row]
         found = [row for row in group if row['gold_retrieved']]
         missing = [row for row in group if not row['gold_retrieved']]
         found_score = f"{statistics.mean(row['judgment']['correctness'] for row in found):.2f}" if found else 'N/A'
         missing_score = f"{statistics.mean(row['judgment']['correctness'] for row in missing):.2f}" if missing else 'N/A'
+        found_faithfulness = f"{statistics.mean(row['judgment']['faithfulness'] for row in found):.3f}" if found else 'N/A'
+        missing_faithfulness = f"{statistics.mean(row['judgment']['faithfulness'] for row in missing):.3f}" if missing else 'N/A'
         abstentions = sum(row['category'] == 'honest_abstain' for row in missing)
-        lines.append(f'| {_cell(name)} | {len(found)} | {found_score} | {len(missing)} | {missing_score} | {abstentions} |')
+        lines.append(f'| {_cell(name)} | {len(found)} | {found_score} | {found_faithfulness} | '
+                     f'{len(missing)} | {missing_score} | {missing_faithfulness} | {abstentions} |')
     lines += ['', '## Per-question scores', '',
               '| Configuration | Question | gold_retrieved | Category | Correctness | Faithfulness | Correct-source citation | Unsupported claims | Reasoning |',
               '|---|---|---|---|---|---|---|---|---|']

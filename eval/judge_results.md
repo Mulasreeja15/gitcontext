@@ -13,16 +13,16 @@ Skipped questions: 0. Skipped questions are excluded from all score averages.
 | vector + test down-ranking (prompt: default) | 4.67 | 0.852 | 75.6% | 53.3% | 0 |
 | vector + test down-ranking (prompt: strict) | 4.47 | 0.875 | 77.8% | 60.0% | 0 |
 
-## Correctness separated by retrieval outcome
+## Correctness and faithfulness separated by retrieval outcome
 
 Generation correctness is assessed separately on questions where a gold-labelled chunk was retrieved. No-gold correctness is the original cached judge grade, not a generation-error rate. The original judge compared every answer against gold context the answering model may never have seen; honest abstentions can therefore receive low raw correctness.
 
 `gold_retrieved` checks label membership in the original hit list. Labels may miss valid alternative code or documentation. `honest_abstain` is a deterministic heuristic for an explicit source-insufficiency statement when gold was not retrieved; it does not certify that every other claim is supported. Cached LLM scores are unchanged.
 
-| Configuration | Gold retrieved (n) | Correctness: gold retrieved | Gold not retrieved (n) | Correctness: no gold | honest_abstain (n) |
-|---|---|---|---|---|---|
-| vector + test down-ranking (prompt: default) | 35 | 4.80 | 10 | 4.20 | 3 |
-| vector + test down-ranking (prompt: strict) | 35 | 4.77 | 10 | 3.40 | 5 |
+| Configuration | Gold retrieved (n) | Correctness: gold retrieved | Faithfulness: gold retrieved | Gold not retrieved (n) | Correctness: no gold | Faithfulness: no gold | honest_abstain (n) |
+|---|---|---|---|---|---|---|---|
+| vector + test down-ranking (prompt: default) | 35 | 4.80 | 0.909 | 10 | 4.20 | 0.652 | 3 |
+| vector + test down-ranking (prompt: strict) | 35 | 4.77 | 0.915 | 10 | 3.40 | 0.736 | 5 |
 
 ## Per-question scores
 

@@ -376,15 +376,54 @@ def test_gold_retrieval_and_honest_abstention_are_separate(example):
 def test_report_separates_gold_and_excludes_abstentions_from_generation_worst(example):
     questions, hits, _ = example
     base = {'expected': questions[0]['expected'], 'hits': hits, 'config': 'vector',
-            'answer': 'Correct [2]', 'judgment': {**SCORE, 'correctness': 5}}
+            'answer': 'Correct [2]', 'judgment': {**SCORE, 'correctness': 5, 'faithfulness': 0.9}}
     abstain = {**base, 'hits': [hits[0]], 'question': 'Missing implementation',
                'answer': "The provided sources don't show the answer.",
-               'judgment': {**SCORE, 'correctness': 1}}
+               'judgment': {**SCORE, 'correctness': 1, 'faithfulness': 1.0}}
     found = {**base, 'question': 'Retrieved implementation'}
     report = judge.render_report([found, abstain])
-    assert '| vector | 1 | 5.00 | 1 | 1.00 | 1 |' in report
+    assert '| vector | 1 | 5.00 | 0.900 | 1 | 1.00 | 1.000 | 1 |' in report
     assert '| Missing implementation | no | honest_abstain | 1 |' in report
     assert 'gold_retrieved' in report
     worst = report.split('## Five lowest-scoring questions')[1]
     assert 'Retrieved implementation' in worst and 'Missing implementation' not in worst
     assert abstain['judgment']['correctness'] == 1
+
+
+
+@pytest.mark.parametrize('found', [False, True])
+def test_gold_and_abstention_are_persisted_with_new_judgments(example, tmp_path, found):
+    questions, hits, retriever = example
+    # Gold exists in all_payloads for judging, but only sent hits count as retrieved.
+    retriever.retrieve.return_value.hits = [hits[1] if found else hits[0]]
+    path = tmp_path / 'cache.jsonl'
+    with patch.object(answer, 'generate_answer', return_value="The provided sources don't show the answer."), \
+            patch.object(answer, '_chat', return_value=json.dumps(SCORE)):
+        rows = judge.evaluate_answers(questions, cache_path=path, retriever=retriever, prompt='strict')
+    stored = judge.JudgeCache(path).get(questions[0]['question'], rows[0]['config'], prompt='strict')
+    assert stored['gold_retrieved'] is found
+    assert (stored['category'] == 'honest_abstain') is (not found)
+    assert stored['judgment'] == SCORE
+    assert len(stored['hits']) == 1
+
+
+def test_gold_retrieved_does_not_depend_on_citations_or_current_k(example):
+    questions, hits, _ = example
+    old_hits = [hits[0]] * 5 + [hits[1]]
+    record = {'hits': old_hits, 'expected': questions[0]['expected'], 'answer': 'No citations here.'}
+    classified = judge.classify_answer(record)
+    assert classified['gold_retrieved']
+    assert not classified['cites_correct_source']
+    assert not judge.gold_retrieved([], questions[0]['expected'])
+    assert not judge.gold_retrieved(old_hits, [])
+
+
+def test_split_report_handles_an_empty_retrieval_group(example):
+    questions, hits, _ = example
+    row = {'config': 'vector', 'question': 'q', 'expected': questions[0]['expected'],
+           'hits': [hits[0]], 'answer': "The sources don't show the answer.", 'judgment': SCORE}
+    report = judge.render_report([row])
+    assert '| vector | 0 | N/A | N/A | 1 | 4.00 | 0.750 | 1 |' in report
+    row['hits'] = hits
+    report = judge.render_report([row])
+    assert '| vector | 1 | 4.00 | 0.750 | 0 | N/A | N/A | 0 |' in report
