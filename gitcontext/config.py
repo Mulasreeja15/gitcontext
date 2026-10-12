@@ -1,5 +1,6 @@
 """Central settings. Change models, paths and limits here."""
 from pathlib import Path
+import os
 
 from dotenv import load_dotenv
 
@@ -10,6 +11,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SELF_SKIP_DIRS = {"tests"}  # exclude our unit tests only when indexing this project
 REPOS_DIR = DATA_DIR / "repos"          # cloned repos land here
 QDRANT_PATH = str(DATA_DIR / "qdrant")  # local Qdrant, no Docker needed
+QDRANT_URL = os.getenv('QDRANT_URL') or None  # optional shared Qdrant server
+GROQ_RETRY_BASE_SECONDS = 5
+GROQ_RETRY_MAX_SECONDS = 60
+GROQ_DOCTOR_TIMEOUT = 10
+DOCTOR_PACKAGES = ('tree_sitter', 'tree_sitter_python', 'sentence_transformers',
+                   'qdrant_client', 'requests', 'dotenv', 'rank_bm25',
+                   'fastapi', 'uvicorn', 'httpx', 'pytest', 'portalocker')
 DEFAULT_REPO = "psf/requests"
 COLLECTION = "repo__psf__requests"
 MAX_REPO_BYTES = 200 * 1024 * 1024

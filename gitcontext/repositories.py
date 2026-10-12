@@ -39,11 +39,11 @@ def infer_repo(source: str, root: Path, remote: str = '') -> str:
 
 def list_repos(client=None):
     """List saved repositories using one local Qdrant connection."""
-    from qdrant_client import QdrantClient
+    from .database import open_client
     from .indexing import load_state, index_status
     from .store import VectorStore
     owned = client is None
-    client = client if client is not None else QdrantClient(path=config.QDRANT_PATH)
+    client = client if client is not None else open_client()
     try:
         rows = []
         for path in sorted(config.INDEX_STATE_DIR.glob('*.json')):
@@ -65,10 +65,10 @@ def list_repos(client=None):
 
 def remove_repo(value, client=None):
     """Remove one collection/state while preserving source checkouts."""
-    from qdrant_client import QdrantClient
+    from .database import open_client
     identity = repo_id(value)
     owned = client is None
-    client = client if client is not None else QdrantClient(path=config.QDRANT_PATH)
+    client = client if client is not None else open_client()
     try:
         collection = collection_name(identity)
         exists = client.collection_exists(collection)

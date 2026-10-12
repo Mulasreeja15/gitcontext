@@ -95,7 +95,7 @@ Functions, classes and methods carry file/symbol context headers. Small classes 
 
 ## Quick start
 
-Requires Python 3.12 and Git. From PowerShell:
+Python 3.12 is the tested version (also used by CI); Git is required. From PowerShell:
 
 ```powershell
 git clone https://github.com/Mulasreeja15/gitcontext.git
@@ -246,3 +246,59 @@ Retrieval reports go to `eval/results.md` and `eval/history_questions_results.md
 - [ ] Add authentication and persistent background jobs for shared deployments
 
 Python · tree-sitter · sentence-transformers · Qdrant · rank-bm25 · FastAPI · Groq
+
+## Diagnostics and reproducible installs
+
+`requirements-lock.txt` pins the packages from the working Windows virtual environment,
+excluding editable/local packages (pywin32 has a Windows-only marker). It reproduces the tested environment; use
+Python 3.12 and install with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+.\.venv\Scripts\python.exe main.py doctor --offline
+python main.py doctor
+```
+
+Doctor checks Python (warns outside 3.11–3.12), package imports, whether the Groq
+key is set, database availability, and each indexed repository's collection and
+freshness. It prints a fix for each warning. The default doctor makes a tiny
+Groq request; `--offline` skips it. Credentials are never printed.
+
+Groq connections reuse a requests.Session. Connection/timeouts and HTTP
+500/502/503/504 retry with capped exponential backoff, sharing the six-attempt
+budget with 429 retries. Streams may reconnect before their first token; once
+tokens have been emitted, a failure is surfaced instead of replaying text. Judge
+answers and each finished judgment are saved immediately so reruns resume cached
+work. Judge-only contexts use four sources, 1,500 characters per source and 3,000
+characters of gold context, retrying at half size on 413 before recording a skip.
+
+### Local database locks and optional Qdrant server
+
+Local mode remains the default and permits one process. A lock error now gives
+a short message: stop the other GitContext process using **Ctrl + C** in the
+server terminal. Alternatively, `taskkill /F /T /IM python.exe` stops **all**
+Python processes; use it only when that is intended. Never delete lock files
+while another process owns the database.
+
+Set `QDRANT_URL` to use a Qdrant server instead of `data/qdrant`. In PowerShell:
+
+```powershell
+$env:QDRANT_URL = 'http://localhost:6333'
+python main.py doctor --offline
+```
+
+Compose keeps local mode by default. To enable its optional Qdrant service:
+
+```powershell
+$env:QDRANT_URL = 'http://qdrant:6333'
+docker compose --profile qdrant up --build
+```
+
+The server persists collections in the named `qdrant_storage` volume and exposes
+6333 to host clients (which use `http://localhost:6333`). The API still owns one
+shared client/model set. Repo states/checkouts/cache files remain in the data
+mount. Existing local collections are not automatically migrated: index the
+repositories in server mode. Server mode supports concurrent processes; the
+local-mode storage restrictions elsewhere in this README do not apply to it.
+If the Qdrant service is not ready at application startup, start it first with
+`docker compose --profile qdrant up -d qdrant`, then start GitContext.

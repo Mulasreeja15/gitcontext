@@ -1,16 +1,15 @@
 """Local embeddings (sentence-transformers) + local Qdrant vector store."""
 from __future__ import annotations
 
-from pathlib import Path
 import warnings
 
-from qdrant_client import QdrantClient
 from qdrant_client.models import (Distance, PointStruct, VectorParams, Filter,
                                  FieldCondition, MatchValue, MatchAny, FilterSelector, PayloadSchemaType, DatetimeRange)
 
 from . import config
 from .chunker import Chunk
 from .repositories import collection_name, repo_id
+from .database import open_client
 
 
 class Embedder:
@@ -36,8 +35,7 @@ class Embedder:
 class VectorStore:
     def __init__(self, repo: str | None = None, client=None):
         self.repo_id = repo_id(repo or config.DEFAULT_REPO)
-        Path(config.QDRANT_PATH).mkdir(parents=True, exist_ok=True)
-        self.client = client if client is not None else QdrantClient(path=config.QDRANT_PATH)
+        self.client = client if client is not None else open_client()
 
     @property
     def collection(self):

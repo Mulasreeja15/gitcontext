@@ -26,6 +26,14 @@ in the source code that answers the question.
 Return ONLY the query, on one line, with no explanation and no quotes."""
 
 MAX_RETRIES = 6
+SESSION = requests.Session()
+
+
+def _network_retry(attempt: int) -> None:
+    """Wait before retrying a transport failure or temporary server error."""
+    wait = min(config.GROQ_RETRY_BASE_SECONDS * 2 ** attempt, config.GROQ_RETRY_MAX_SECONDS)
+    print(f'Network error talking to Groq, retrying in {wait}s (attempt {attempt + 1}/{MAX_RETRIES})')
+    time.sleep(wait)
 
 
 class RequestTooLarge(Exception):
@@ -33,25 +41,38 @@ class RequestTooLarge(Exception):
 
 
 def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
-          model: str | None = None, stream: bool = False, on_retry=None) -> str | Iterator[str]:
+          model: str | None = None, stream: bool = False, on_retry=None,
+          max_tokens: int | None = None, _start_attempt: int = 0) -> str | Iterator[str]:
     """Call Groq with shared rate-limit retries and an optional model override."""
     key = os.getenv(config.LLM_KEY_NAME)
     if not key:
         raise SystemExit(f"Missing {config.LLM_KEY_NAME}. Add it to your .env file.")
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(_start_attempt, MAX_RETRIES):
         body = {"model": model or config.LLM_MODEL, "messages": messages, "temperature": temperature}
+        if max_tokens is not None:
+            body['max_tokens'] = max_tokens
         request_options = {}
         if stream:
             body['stream'] = True
             request_options['stream'] = True
-        r = requests.post(
-            config.LLM_URL,
-            headers={"Authorization": f"Bearer {key}"},
-            json=body,
-            timeout=timeout,
-            **request_options,
-        )
+        try:
+            r = SESSION.post(
+                config.LLM_URL,
+                headers={"Authorization": f"Bearer {key}"},
+                json=body, timeout=timeout, **request_options,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == MAX_RETRIES - 1:
+                raise requests.ConnectionError('Could not reach Groq after several retries. Check your connection and try again.') from None
+            _network_retry(attempt)
+            continue
+        if r.status_code in {500, 502, 503, 504}:
+            r.close()
+            if attempt == MAX_RETRIES - 1:
+                raise requests.ConnectionError('Groq is temporarily unavailable after several retries. Try again later.')
+            _network_retry(attempt)
+            continue
         if r.status_code == 429:
             # Rate limited: wait as long as the server asks, or back off exponentially.
             retry_after = r.headers.get("retry-after")
@@ -75,7 +96,13 @@ def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
             r.close()
             raise
         if stream:
-            return _ResponseStream(r)
+            def reconnect():
+                if attempt == MAX_RETRIES - 1:
+                    raise requests.ConnectionError('Groq stream failed after several retries.')
+                _network_retry(attempt)
+                return _chat(messages, temperature, timeout, model, stream=True,
+                             on_retry=on_retry, max_tokens=max_tokens, _start_attempt=attempt + 1)
+            return _ResponseStream(r, retry=reconnect)
         try:
             return (r.json()["choices"][0]["message"]["content"] or "").strip()
         finally:
@@ -87,11 +114,13 @@ def _chat(messages: list[dict], temperature: float = 0.1, timeout: int = 120,
 class _ResponseStream:
     """Close HTTP even if a connected token iterator is never consumed."""
 
-    def __init__(self, response):
+    def __init__(self, response, retry=None):
         self.response = response
         self.tokens = _stream_tokens(response)
         self.started = False
         self.closed = False
+        self.retry = retry
+        self.emitted = False
 
     def __iter__(self):
         return self
@@ -101,7 +130,16 @@ class _ResponseStream:
             raise StopIteration
         self.started = True
         try:
-            return next(self.tokens)
+            try:
+                token = next(self.tokens)
+            except (requests.ConnectionError, requests.Timeout):
+                if self.emitted or self.retry is None:
+                    raise  # never replay an answer after the user has seen tokens
+                self.tokens = self.retry()
+                self.retry = None  # the replacement stream owns subsequent retries
+                token = next(self.tokens)
+            self.emitted = True
+            return token
         except BaseException:
             self.closed = True  # token generator's finally already closed HTTP
             raise

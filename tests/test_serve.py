@@ -22,10 +22,10 @@ def test_serve_dispatch(flags, host, port):
                  and node.name in {'main', 'cmd_serve', 'add_retrieval_flags', 'add_metadata_flags'}]
     namespace = {'argparse': argparse, 'config': config,
                  'cmd_index': Mock(), 'cmd_update': Mock(), 'cmd_status': Mock(),
-                 'cmd_search': Mock(), 'cmd_ask': Mock(), 'cmd_repos': Mock(), 'cmd_remove': Mock(), 'cmd_index_history': Mock()}
+                 'cmd_search': Mock(), 'cmd_ask': Mock(), 'cmd_repos': Mock(), 'cmd_remove': Mock(), 'cmd_index_history': Mock(), 'cmd_doctor': Mock()}
     exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), 'exec'), namespace)
     runner = Mock()
-    with patch.dict('sys.modules', {'uvicorn': SimpleNamespace(run=runner)}), \
+    with patch('gitcontext.database.open_client', return_value=Mock()), patch.dict('sys.modules', {'uvicorn': SimpleNamespace(run=runner)}), \
             patch('sys.argv', ['main.py', 'serve', *flags]):
         namespace['main']()
     runner.assert_called_once_with('gitcontext.api:app', host=host, port=port)

@@ -106,7 +106,17 @@ def cmd_ask(args):
 def cmd_serve(args):
     """Serve one process so models and local Qdrant are shared across requests."""
     import uvicorn
+    from gitcontext.database import open_client
+    # Diagnose an existing lock before uvicorn's startup traceback machinery.
+    client = open_client()
+    client.close()
     uvicorn.run("gitcontext.api:app", host=args.host, port=args.port)
+
+
+def cmd_doctor(args):
+    """Print environment, repository, database and optional Groq diagnostics."""
+    from gitcontext.doctor import run
+    run(offline=args.offline)
 
 
 def add_retrieval_flags(p):
@@ -165,6 +175,9 @@ def main():
     from gitcontext.repositories import repo_id
     parser = argparse.ArgumentParser(description="GitContext: ask questions about a codebase")
     sub = parser.add_subparsers(required=True)
+    p = sub.add_parser('doctor', help='check environment, database and connectivity')
+    p.add_argument('--offline', action='store_true', help='skip the Groq request')
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("index", help="index a repo (local path or Git URL)")
     p.add_argument("repo")

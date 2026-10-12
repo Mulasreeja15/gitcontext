@@ -169,3 +169,21 @@ The header Add repository button opens a native dialog; preserve indexing IDs,
 source routing, polling and safe DOM-only rendering when editing the UI.
 `eval/judge_results.md` is currently absent: never fabricate answer-quality scores.
 The README screenshot at docs/screenshot.png is explicitly a placeholder.
+
+## Resilience and doctor
+
+All owned Qdrant connections must use gitcontext.database.open_client(); injected
+clients stay shared. Local locks become DatabaseLocked with stop-server guidance;
+evaluation scripts use run_cli to suppress only this known failure. QDRANT_URL
+selects a server; unset it for default local storage. Docker's optional qdrant
+profile provides a separate persistent server volume; reindex to migrate data.
+
+`.venv\Scripts\python.exe main.py doctor --offline` checks packages, Python,
+key presence (never its value), database and repo freshness without Groq. Doctor
+without --offline makes a tiny Groq request and requires authorization during
+coding. All Groq calls reuse answer.SESSION and share bounded retries for 429,
+transport failures and temporary HTTP server errors. Streams never replay tokens
+already emitted. Save judge answers and judgments immediately on completion.
+Use requirements-lock.txt to reproduce pinned installed versions; Python 3.12 is
+the tested CI version. Never run freeze output directly into public logs if it
+contains editable/local references; filter them from the lock file.

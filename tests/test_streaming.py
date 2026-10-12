@@ -19,7 +19,7 @@ def test_stream_retries_before_first_token_and_preserves_whitespace(monkeypatch)
     success.iter_lines.return_value = iter([
         b': keepalive', b'', b'data: {"choices":[{"delta":{"role":"assistant"}}]}',
         frame('Hello'), frame(' world\n'), b'data: {"choices":[]}', b'data: [DONE]', frame('ignored')])
-    with patch.object(answer.requests, 'post', side_effect=[limited, success]) as post, \
+    with patch.object(answer.SESSION, 'post', side_effect=[limited, success]) as post, \
             patch.object(answer.time, 'sleep') as sleep:
         tokens = answer.stream_answer('q', [])
         assert post.call_count == 2  # connect/retry happens before iteration
@@ -62,7 +62,7 @@ def test_stream_parse_errors_release_response(line):
 def test_stream_retry_exhaustion(monkeypatch):
     monkeypatch.setenv(config.LLM_KEY_NAME, 'unit-test-placeholder')
     limited = Mock(status_code=429, headers={})
-    with patch.object(answer.requests, 'post', return_value=limited) as post, \
+    with patch.object(answer.SESSION, 'post', return_value=limited) as post, \
             patch.object(answer.time, 'sleep'):
         with pytest.raises(SystemExit, match='Still rate limited'):
             answer.stream_answer('q', [])
@@ -84,7 +84,7 @@ def test_rate_limit_callback_precedes_sleep(monkeypatch):
     success = Mock(status_code=200)
     success.iter_lines.return_value = iter([b'data: [DONE]'])
     events = []
-    with patch.object(answer.requests, 'post', side_effect=[limited, success]), \
+    with patch.object(answer.SESSION, 'post', side_effect=[limited, success]), \
             patch.object(answer.time, 'sleep', side_effect=lambda wait: events.append(('sleep', wait))):
         stream = answer.stream_answer('q', [], on_retry=lambda wait: events.append(('retry', wait)))
         assert list(stream) == []

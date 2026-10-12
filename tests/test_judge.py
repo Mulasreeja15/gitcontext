@@ -221,3 +221,23 @@ def test_answer_generation_413_uses_smaller_sources(example, tmp_path, succeeds)
         assert chat.call_count == int(succeeds)
     if not succeeds:
         assert rows[0]['status'] == 'skipped: too large'
+
+
+
+def test_completed_judgment_is_saved_before_next_question_crashes(example, tmp_path):
+    questions, _, retriever = example
+    questions = questions + [{**questions[0], 'question': 'Later question'}]
+    path = tmp_path / 'cache.jsonl'
+    with patch.object(answer, 'generate_answer', return_value='Answer [2]'), \
+            patch.object(answer, '_chat', side_effect=[json.dumps(SCORE), RuntimeError('interrupted')]):
+        with pytest.raises(RuntimeError, match='interrupted'):
+            judge.evaluate_answers(questions, cache_path=path, retriever=retriever)
+    cache = judge.JudgeCache(path)
+    from gitcontext.retriever import RetrievalOptions
+    first = cache.get(questions[0]['question'], RetrievalOptions().describe())
+    assert first['judgment'] == SCORE
+    with patch.object(answer, 'generate_answer', side_effect=AssertionError('already cached')), \
+            patch.object(answer, '_chat', return_value=json.dumps(SCORE)) as chat:
+        rows = judge.evaluate_answers(questions, cache_path=path, retriever=retriever)
+    chat.assert_called_once()
+    assert len(rows) == 2

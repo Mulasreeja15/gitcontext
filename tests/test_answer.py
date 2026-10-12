@@ -25,7 +25,7 @@ def response(status=200, content=' result ', headers=None):
 def test_chat_success():
     messages = [{'role': 'user', 'content': 'question'}]
     reply = response()
-    with patch.object(answer.requests, 'post', return_value=reply) as post:
+    with patch.object(answer.SESSION, 'post', return_value=reply) as post:
         assert answer._chat(messages) == 'result'
     kwargs = post.call_args.kwargs
     assert post.call_args.args == (config.LLM_URL,)
@@ -35,7 +35,7 @@ def test_chat_success():
 
 
 def test_chat_model_override():
-    with patch.object(answer.requests, 'post', return_value=response()) as post:
+    with patch.object(answer.SESSION, 'post', return_value=response()) as post:
         answer._chat([], temperature=0.0, model='different-judge')
     assert post.call_args.kwargs['json']['model'] == 'different-judge'
     assert post.call_args.kwargs['json']['temperature'] == 0.0
@@ -44,7 +44,7 @@ def test_chat_model_override():
 @pytest.mark.parametrize('stream', [False, True])
 def test_chat_413_is_recoverable_and_closes_response(stream):
     reply = response(413)
-    with patch.object(answer.requests, 'post', return_value=reply) as post, \
+    with patch.object(answer.SESSION, 'post', return_value=reply) as post, \
             patch.object(answer.time, 'sleep') as sleep:
         with pytest.raises(answer.RequestTooLarge, match='413'):
             answer._chat([], stream=stream)
@@ -56,7 +56,7 @@ def test_chat_413_is_recoverable_and_closes_response(stream):
 @pytest.mark.parametrize('headers,wait', [({'retry-after': '2'}, 2), ({}, 5), ({'retry-after': '120'}, 60)])
 def test_chat_retries_429_then_succeeds(headers, wait):
     limited, success = response(429, headers=headers), response(content='ok')
-    with patch.object(answer.requests, 'post', side_effect=[limited, success]) as post, \
+    with patch.object(answer.SESSION, 'post', side_effect=[limited, success]) as post, \
             patch.object(answer.time, 'sleep') as sleep:
         assert answer._chat([]) == 'ok'
         assert post.call_count == 2
@@ -68,7 +68,7 @@ def test_chat_retries_429_then_succeeds(headers, wait):
 @pytest.mark.parametrize('content,expected', [('"resolve_redirects"\nexplanation', 'resolve_redirects'),
                                              ('', 'question')])
 def test_rewrite_and_cache(content, expected):
-    with patch.object(answer.requests, 'post', return_value=response(content=content)) as post:
+    with patch.object(answer.SESSION, 'post', return_value=response(content=content)) as post:
         assert answer.rewrite_query('question') == expected
         assert answer.rewrite_query('question') == expected
         post.assert_called_once()
@@ -77,7 +77,7 @@ def test_rewrite_and_cache(content, expected):
 
 
 def test_chat_retry_exhaustion():
-    with patch.object(answer.requests, 'post', return_value=response(429)) as post, \
+    with patch.object(answer.SESSION, 'post', return_value=response(429)) as post, \
             patch.object(answer.time, 'sleep') as sleep:
         with pytest.raises(SystemExit, match='Still rate limited'):
             answer._chat([])
