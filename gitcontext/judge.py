@@ -46,9 +46,10 @@ def parse_judgment(text: str) -> dict:
 
 
 def cites_correct_source(text: str, hits: list, expected: list[str]) -> bool:
-    """Check one-based [n] citations against retrieved payloads and gold labels."""
+    """Match [n] or Groq's 【n†line annotation】 against original cached hits."""
     from evaluate import is_match
-    for citation in re.findall(r'\[(\d+)\]', text):
+    for square, unicode in re.findall(r'\[(\d+)\]|【(\d+)(?:†[^】\r\n]+)?】', text):
+        citation = square or unicode
         index = int(citation) - 1
         if 0 <= index < len(hits) and any(is_match(hits[index][1], label) for label in expected):
             return True

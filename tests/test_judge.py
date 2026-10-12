@@ -57,10 +57,27 @@ def example(helper_modules):
 @pytest.mark.parametrize('text,expected', [
     ('Supported [2]', True), ('Wrong [1]', False), ('Both [1][2]', True),
     ('No citation', False), ('Invalid [0][-1][3][999]', False),
+    ('Supported 【2】', True), ('Supported 【2†L1-L22】', True),
+    ('Supported 【2†lines\u202f106‑107】', True),
+    ('Both 【1†L1-L2】【2†L1-L2】', True),
+    ('Wrong 【1】', False), ('Wrong 【1†L1-L2】', False),
+    ('Invalid 【0】【3】【999】【-1】', False),
+    ('Not citations ["Authorization"] 【2foo】 【2†L1\nL2】', False),
 ])
 def test_citations(example, text, expected):
     questions, hits, _ = example
     assert judge.cites_correct_source(text, hits, questions[0]['expected']) is expected
+
+
+def test_cached_six_source_answer_keeps_original_numbering(example):
+    """Older cached answers must not be sliced to today's JUDGE_K=4."""
+    questions, hits, _ = example
+    old_hits = [hits[0]] * 5 + [hits[1]]
+    assert config.JUDGE_K == 4
+    assert judge.cites_correct_source('Supported 【6†L1-L2】', old_hits,
+                                      questions[0]['expected'])
+    assert not judge.cites_correct_source('Different source 【1†L1-L2】', old_hits,
+                                          questions[0]['expected'])
 
 
 def test_gold_context_and_prompt(example):
