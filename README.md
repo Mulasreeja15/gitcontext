@@ -53,7 +53,18 @@ Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with 
 
 The judge measures correctness (1–5) against labelled gold context, faithfulness (0–1) to supplied sources, correct-source citation rate, and the fraction of answers with zero unsupported claims.
 
-**Results pending:** `eval/judge_results.md` is not present in this checkout. No answer-quality scores are claimed. Run `python judge.py --rewrite` with Groq credentials to generate the summary, per-question scores, and five lowest-scoring answers. Answers and judgments are cached; use `--no-cache` after changing an index or prompts. The default judge and answer model are the same; a different `JUDGE_MODEL` reduces self-preference bias.
+Current results for the 45-question code set, from the [answer-quality report](eval/judge_results.md). Both generation and judging use `openai/gpt-oss-120b`; correct-source citations are checked deterministically in Python. Skipped questions are excluded from score averages.
+
+| Configuration | Mean correctness (1-5) | Mean faithfulness | Correct-source citations | Zero unsupported claims | Skipped |
+|---|---|---|---|---|---|
+| vector + test down-ranking | 4.67 | 0.852 | 75.6% | 53.3% | 0 |
+
+**What the judge revealed**
+
+- Answers are usually correct, but about 15% of claims are not backed by the cited sources: the LLM adds knowledge from training, such as urllib3 internals.
+- A citation-parser bug initially reported only 51% correct-source citations. Investigating the suspicious result fixed the rate to 75.6%; the remaining misses cite valid code outside the narrow evaluation labels.
+- The “hooks” question misses the retrieval labels but is answered correctly from documentation, showing that retrieval metrics can underestimate the system.
+- A manual spot-check found that the judge marked an off-topic answer to the `.netrc` password question as correct. Judge scores are estimates, and using the same model to generate and judge is a known source of bias; a different `JUDGE_MODEL` can reduce self-preference bias.
 
 ### History retrieval: 8 questions
 
