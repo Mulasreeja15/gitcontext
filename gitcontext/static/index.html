@@ -10,6 +10,7 @@
 @media(prefers-color-scheme:dark){:root{--bg:#11151c;--panel:#1a202a;--ink:#e9edf5;--muted:#9aa8bd;--line:#303a49;--accent:#95afff;--soft:#273450;--code:#141a23;--error:#ffa0a6;--shadow:none}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}button,textarea,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.6}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px}header{border-bottom:1px solid var(--line);background:var(--panel)}.header-inner{max-width:1080px;margin:auto;padding:21px 28px;display:flex;align-items:center;gap:16px}.brand{font-size:20px;font-weight:750;letter-spacing:-.7px}.mark{display:inline-grid;place-items:center;background:var(--soft);color:var(--accent);border-radius:9px;width:34px;height:34px;margin-right:9px;font:700 16px monospace}.repo{margin-left:auto;color:var(--muted);font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.dot{width:7px;height:7px;border-radius:50%;background:#40ad84;display:inline-block;margin-right:6px}.count{border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-variant-numeric:tabular-nums}main{max-width:980px;margin:54px auto;padding:0 28px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--accent);font-weight:700}h1{font-size:clamp(28px,5vw,38px);line-height:1.25;letter-spacing:-1.3px;margin:12px 0}p.intro{color:var(--muted);margin:0 0 28px}.composer{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}label.question-label{display:block;font-size:12px;font-weight:650;color:var(--muted);margin-bottom:10px}textarea{display:block;width:100%;min-height:102px;resize:vertical;border:0;background:transparent;color:var(--ink);outline:none;font-size:17px;line-height:1.65}textarea::placeholder{color:var(--muted)}.composer:focus-within{border-color:var(--accent)}.controls{border-top:1px solid var(--line);padding-top:16px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}.toggles{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.toggle{display:flex;align-items:center;gap:6px;cursor:pointer}.toggle input{accent-color:var(--accent);width:15px;height:15px;margin:0}.buttons{display:flex;gap:8px}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:650}.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}.hint{color:var(--muted);font-size:11px;margin:11px 0 0}.status{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;margin:20px 2px}.status.error{color:var(--error)}.spinner{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}@keyframes spin{to{transform:rotate(360deg)}}[hidden]{display:none!important}.results{margin-top:32px}.section-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}h2{font-size:13px;text-transform:uppercase;letter-spacing:1.3px;margin:0}.answer-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:26px}.answer{overflow-wrap:anywhere}.answer p:first-child{margin-top:0}.answer p:last-child{margin-bottom:0}.answer pre,.source-code{background:var(--code);border:1px solid var(--line);border-radius:8px;overflow:auto;padding:16px;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:4}.answer code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);padding:2px 5px;border-radius:4px}.answer pre code{padding:0;background:none;font-size:12px}.citation{display:inline-block;border:0;border-radius:4px;color:var(--accent);background:var(--soft);text-decoration:none;font-size:11px;font-weight:700;padding:0 5px;margin:0 2px;vertical-align:baseline}.timings{border-top:1px solid var(--line);padding-top:14px;margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}.timings strong{color:var(--ink);font-weight:600}.source-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:10px;transition:border-color .25s,box-shadow .25s;scroll-margin-top:20px}.source-card.highlight{border-color:var(--accent);box-shadow:0 0 0 3px var(--soft)}.source-card summary{padding:17px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;list-style:none}.source-card summary::-webkit-details-marker{display:none}.source-number{color:var(--accent);font:600 12px monospace;padding-top:2px;min-width:25px}.source-main{flex:1;min-width:0}.path{font:600 12px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.symbol{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.source-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:11px}.badge{color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 5px}.chevron{font-size:14px;transition:transform .2s}.source-card[open] .chevron{transform:rotate(90deg)}.source-code{margin:0 17px 17px}.empty{border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center;color:var(--muted);font-size:13px}.footer{margin:36px 0;color:var(--muted);font-size:11px;text-align:center}@media(max-width:640px){.header-inner{padding:15px 18px;flex-wrap:wrap;gap:8px}.repo{width:100%;margin:0 0 0 43px;font-size:11px}main{margin:30px auto;padding:0 18px}.composer{padding:16px}.controls{gap:16px}.buttons{width:100%}.buttons .btn{flex:1}.answer-panel{padding:18px}.source-card summary{padding:14px}.source-meta{flex-wrap:wrap;justify-content:flex-end;max-width:75px}.source-code{margin:0 14px 14px}.toggles{gap:12px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .repository-dialog{width:min(560px,calc(100% - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #0003}.repository-dialog::backdrop{background:#10182888;backdrop-filter:blur(4px)}.dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.repository-dialog h2{font-size:19px;text-transform:none;letter-spacing:-.4px}.repository-dialog form{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}.repository-dialog label{width:100%}.repository-dialog input{flex:1;min-width:180px}.repository-dialog input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.answer h1,.answer h2,.answer h3,.answer h4,.answer h5,.answer h6{text-transform:none;letter-spacing:0;line-height:1.35;margin:1.3em 0 .6em}.answer h1{font-size:24px}.answer h2{font-size:20px}.answer h3{font-size:17px}.answer h4,.answer h5,.answer h6{font-size:15px}.answer li{margin:.35em 0}.answer li p{margin:.6em 0}.answer a:not(.citation){color:var(--accent);overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -50,7 +51,17 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let busy = false, answerText = '', sourceCount = 0, scheduled = false;
-let selectedRepo = '', repoRows = [], indexJob = {state:'idle', repo:null}, completedJob = null, pollingIndex = false;
+function savedRepository() {
+  try {return localStorage.getItem('gitcontext.selectedRepo') || '';}
+  catch (_) {return '';}
+}
+function rememberRepository() {
+  try {
+    if (selectedRepo) localStorage.setItem('gitcontext.selectedRepo', selectedRepo);
+    else localStorage.removeItem('gitcontext.selectedRepo');
+  } catch (_) {} // Storage may be unavailable in private or restricted browsing.
+}
+let selectedRepo = savedRepository(), repoRows = [], indexJob = {state:'idle', repo:null}, completedJob = null, pollingIndex = false;
 const indexing = () => ['cloning','chunking','embedding'].includes(indexJob.state);
 function updateButtons() {
   const disabled = busy || !selectedRepo || (indexing() && indexJob.repo === selectedRepo);
@@ -75,7 +86,10 @@ async function loadRepos(preferred) {
   const response = await checked(await fetch('/repos'));
   repoRows = await response.json();
   if (preferred && repoRows.some(row => row.repo === preferred)) selectedRepo = preferred;
-  if (!repoRows.some(row => row.repo === selectedRepo)) selectedRepo = repoRows[0]?.repo || '';
+  if (!repoRows.some(row => row.repo === selectedRepo)) {
+    selectedRepo = repoRows.find(row => row.repo === 'psf/requests')?.repo || repoRows[0]?.repo || '';
+  }
+  rememberRepository();
   $('repo-picker').replaceChildren();
   if (!repoRows.length) $('repo-picker').append(element('option', 'No indexed repositories'));
   for (const row of repoRows) {
@@ -138,50 +152,136 @@ function focusSource(number) {
   setTimeout(() => card.classList.remove('highlight'), 1800);
 }
 // Build a small Markdown subset exclusively with DOM nodes and textContent.
-// HTML and URLs from the model are always plain text; no raw HTML is evaluated.
-function inline(parent, text) {
-  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[\d+\])/g;
-  let last = 0;
-  for (const match of text.matchAll(pattern)) {
-    parent.append(document.createTextNode(text.slice(last, match.index)));
-    const token = match[0];
-    if (token.startsWith('`')) parent.append(element('code', token.slice(1,-1)));
-    else if (token.startsWith('**')) { const strong = element('strong'); inline(strong, token.slice(2,-2)); parent.append(strong); }
-    else {
-      const number = Number(token.slice(1,-1));
-      if (number > 0 && number <= sourceCount) {
-        const link = element('a', token, 'citation'); link.href = '#source-' + number;
-        link.setAttribute('aria-label', 'Go to source ' + number);
-        link.addEventListener('click', event => {event.preventDefault(); focusSource(number);});
-        parent.append(link);
-      } else parent.append(document.createTextNode(token));
+// Raw HTML remains text; links allow only HTTP(S) URLs and local fragments.
+function closingEmphasis(text, start, size) {
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '\\') {i++; continue;}
+    if (text[i] === '`') {
+      const marker = text.slice(i).match(/^`+/)[0], end = text.indexOf(marker, i + marker.length);
+      if (end !== -1) {i = end + marker.length - 1; continue;}
     }
-    last = match.index + token.length;
+    if (text[i] !== '*') continue;
+    const length = text.slice(i).match(/^\*+/)[0].length;
+    if (size === 2 && length >= 2) return i + length - 2;
+    if (size === 1 && length % 2 === 1) return i + length - 1;
+    i += length - 1;
   }
-  parent.append(document.createTextNode(text.slice(last)));
+  return -1;
 }
-function markdown(text) {
-  const fragment = document.createDocumentFragment(), lines = text.split('\n');
-  let paragraph = [], list = null, code = null;
-  function flush() { if (paragraph.length) { const p = element('p'); inline(p, paragraph.join(' ')); fragment.append(p); paragraph = []; } }
-  for (const line of lines) {
-    if (/^\s*```/.test(line)) {
-      flush(); list = null;
-      if (code !== null) {const pre = element('pre'); pre.append(element('code', code.join('\n'))); fragment.append(pre); code = null;}
-      else code = [];
-      continue;
+function safeMarkdownUrl(value) {
+  if (value.startsWith('#')) return value;
+  try {
+    const url = new URL(value, document.baseURI);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch (_) {return null;}
+}
+function inline(parent, text, depth = 0) {
+  if (depth > 20) {parent.append(document.createTextNode(text)); return;}
+  let plain = '';
+  const flush = () => {if (plain) {parent.append(document.createTextNode(plain)); plain = '';}};
+  for (let i = 0; i < text.length;) {
+    if (text[i] === '\\' && /[\\`*\[\]]/.test(text[i + 1] || '')) {
+      plain += text[i + 1]; i += 2; continue;
     }
-    if (code !== null) {code.push(line); continue;}
-    if (!line.trim()) {flush(); list = null; continue;}
-    const item = line.match(/^\s*(?:[-*+] |\d+\. )(.*)$/);
-    if (item) {
-      flush(); const kind = /^\s*\d+\./.test(line) ? 'OL' : 'UL';
-      if (!list || list.tagName !== kind) {list = element(kind.toLowerCase()); fragment.append(list);}
-      const li = element('li'); inline(li, item[1]); list.append(li);
-    } else {list = null; paragraph.push(line);}
+    if (text[i] === '`') {
+      const marker = text.slice(i).match(/^`+/)[0], end = text.indexOf(marker, i + marker.length);
+      if (end > i + marker.length) {
+        flush(); parent.append(element('code', text.slice(i + marker.length, end)));
+        i = end + marker.length; continue;
+      }
+    }
+    if (text[i] === '*') {
+      const size = text.startsWith('**', i) ? 2 : 1;
+      const end = closingEmphasis(text, i + size, size);
+      if (end > i + size) {
+        flush(); const node = element(size === 2 ? 'strong' : 'em');
+        inline(node, text.slice(i + size, end), depth + 1); parent.append(node);
+        i = end + size; continue;
+      }
+    }
+    if (text[i] === '[') {
+      const linkMatch = text.slice(i).match(/^\[([^\]\n]+)\]\(([^)\n]+)\)/);
+      if (linkMatch) {
+        const href = safeMarkdownUrl(linkMatch[2].trim()); flush();
+        if (href) {
+          const link = element('a'); link.href = href;
+          if (!href.startsWith('#')) {link.target = '_blank'; link.rel = 'noopener noreferrer';}
+          inline(link, linkMatch[1], depth + 1); parent.append(link);
+        } else parent.append(document.createTextNode(linkMatch[0]));
+        i += linkMatch[0].length; continue;
+      }
+      const citation = text.slice(i).match(/^\[(\d+)\]/);
+      if (citation) {
+        flush(); const number = Number(citation[1]);
+        if (number > 0 && number <= sourceCount) {
+          const link = element('a', citation[0], 'citation'); link.href = '#source-' + number;
+          link.setAttribute('aria-label', 'Go to source ' + number);
+          link.addEventListener('click', event => {event.preventDefault(); focusSource(number);});
+          parent.append(link);
+        } else parent.append(document.createTextNode(citation[0]));
+        i += citation[0].length; continue;
+      }
+    }
+    plain += text[i++];
   }
   flush();
-  if (code !== null) {const pre = element('pre'); pre.append(element('code', code.join('\n'))); fragment.append(pre);}
+}
+function markdown(text) {
+  const fragment = document.createDocumentFragment(), lines = text.replace(/\r\n/g, '\n').split('\n');
+  let paragraph = [], paragraphParent = fragment, code = null, codeParent = fragment, blank = false;
+  const lists = [];
+  function flush() {
+    if (paragraph.length) {
+      const p = element('p'); inline(p, paragraph.join(' ')); paragraphParent.append(p); paragraph = [];
+    }
+  }
+  function container(indent) {
+    while (lists.length && indent <= lists[lists.length - 1].indent) lists.pop();
+    return lists.length ? lists[lists.length - 1].item : fragment;
+  }
+  function codeBlock() {const pre = element('pre'); pre.append(element('code', code.join('\n'))); codeParent.append(pre); code = null;}
+  for (const line of lines) {
+    const indent = line.match(/^\s*/)[0].replace(/\t/g, '    ').length;
+    if (/^\s*```/.test(line)) {
+      flush();
+      if (code !== null) codeBlock();
+      else {codeParent = container(indent); code = [];}
+      blank = false; continue;
+    }
+    if (code !== null) {code.push(line); continue;}
+    if (!line.trim()) {flush(); blank = true; continue;}
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
+    if (heading) {
+      flush(); const parent = container(indent), node = element('h' + heading[1].length);
+      inline(node, heading[2]); parent.append(node); blank = false; continue;
+    }
+    const item = line.match(/^\s*(\d{1,9}[.)]|[-*+])\s+(.*)$/);
+    if (item) {
+      flush(); const ordered = /^\d/.test(item[1]), kind = ordered ? 'ol' : 'ul';
+      const number = ordered ? Number(item[1].slice(0,-1)) : null;
+      while (lists.length && lists[lists.length - 1].indent > indent) lists.pop();
+      if (lists.length && lists[lists.length - 1].indent === indent && lists[lists.length - 1].kind !== kind) lists.pop();
+      let current = lists[lists.length - 1];
+      if (!current || current.indent !== indent) {
+        const node = element(kind), parent = current ? current.item : fragment;
+        if (ordered) node.setAttribute('start', String(number));
+        parent.append(node); current = {node, kind, indent, item:null, next:number}; lists.push(current);
+      }
+      const li = element('li');
+      if (ordered) {
+        // Repeated "1." is normal Markdown; other explicit numbers are honored.
+        if (number !== 1 && number !== current.next) li.setAttribute('value', String(number));
+        current.next = (number === 1 ? current.next : number) + 1;
+      }
+      inline(li, item[2]); current.node.append(li); current.item = li;
+      blank = false; continue;
+    }
+    if (blank) flush();
+    const parent = blank ? container(indent) : (lists.length ? lists[lists.length - 1].item : fragment);
+    if (paragraph.length && parent !== paragraphParent) flush();
+    paragraphParent = parent; paragraph.push(line.trim()); blank = false;
+  }
+  flush(); if (code !== null) codeBlock();
   $('answer').replaceChildren(fragment);
 }
 function renderAnswer() {
@@ -282,7 +382,7 @@ async function submit(searchOnly) {
   finally {busy = false; updateButtons(); $('question-form').removeAttribute('aria-busy');}
 }
 $('repo-picker').addEventListener('change', () => {
-  selectedRepo = $('repo-picker').value; selectedMetadata();
+  selectedRepo = $('repo-picker').value; rememberRepository(); selectedMetadata();
   $('results').hidden = true; $('welcome').hidden = false; status('');
 });
 $('source-kind').addEventListener('change', selectedMetadata);
