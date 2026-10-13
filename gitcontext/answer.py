@@ -29,6 +29,7 @@ STRICT_SYSTEM_PROMPT = SYSTEM_PROMPT + """
 Strict grounding requirements:
 - Only state facts that appear in the numbered sources.
 - Every sentence with a factual claim must end with a citation such as [1].
+- Use only [n] citation format, where n is the numbered source. Never use 【】 citations or include line ranges in citations.
 - If the sources do not show something, explicitly say "the provided sources don't show X", replacing X with the missing information.
 - Never fill gaps with general knowledge or knowledge from training.
 - Do not describe code that is not in the sources, including urllib3 internals.

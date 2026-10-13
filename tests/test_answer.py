@@ -108,6 +108,8 @@ def test_explicit_prompt_override_does_not_mutate_config(monkeypatch):
     assert "the provided sources don't show X" in answer.STRICT_SYSTEM_PROMPT
     assert 'Every sentence with a factual claim must end with a citation' in answer.STRICT_SYSTEM_PROMPT
     assert 'urllib3 internals' in answer.STRICT_SYSTEM_PROMPT
+    assert 'Use only [n] citation format' in answer.STRICT_SYSTEM_PROMPT
+    assert 'Never use 【】' in answer.STRICT_SYSTEM_PROMPT
 
 
 def test_invalid_answer_prompt_fails_without_llm(monkeypatch):

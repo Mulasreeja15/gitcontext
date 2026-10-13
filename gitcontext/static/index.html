@@ -11,6 +11,7 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}button,textarea,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.6}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px}header{border-bottom:1px solid var(--line);background:var(--panel)}.header-inner{max-width:1080px;margin:auto;padding:21px 28px;display:flex;align-items:center;gap:16px}.brand{font-size:20px;font-weight:750;letter-spacing:-.7px}.mark{display:inline-grid;place-items:center;background:var(--soft);color:var(--accent);border-radius:9px;width:34px;height:34px;margin-right:9px;font:700 16px monospace}.repo{margin-left:auto;color:var(--muted);font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.dot{width:7px;height:7px;border-radius:50%;background:#40ad84;display:inline-block;margin-right:6px}.count{border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-variant-numeric:tabular-nums}main{max-width:980px;margin:54px auto;padding:0 28px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--accent);font-weight:700}h1{font-size:clamp(28px,5vw,38px);line-height:1.25;letter-spacing:-1.3px;margin:12px 0}p.intro{color:var(--muted);margin:0 0 28px}.composer{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}label.question-label{display:block;font-size:12px;font-weight:650;color:var(--muted);margin-bottom:10px}textarea{display:block;width:100%;min-height:102px;resize:vertical;border:0;background:transparent;color:var(--ink);outline:none;font-size:17px;line-height:1.65}textarea::placeholder{color:var(--muted)}.composer:focus-within{border-color:var(--accent)}.controls{border-top:1px solid var(--line);padding-top:16px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}.toggles{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.toggle{display:flex;align-items:center;gap:6px;cursor:pointer}.toggle input{accent-color:var(--accent);width:15px;height:15px;margin:0}.buttons{display:flex;gap:8px}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:650}.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}.hint{color:var(--muted);font-size:11px;margin:11px 0 0}.status{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;margin:20px 2px}.status.error{color:var(--error)}.spinner{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}@keyframes spin{to{transform:rotate(360deg)}}[hidden]{display:none!important}.results{margin-top:32px}.section-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}h2{font-size:13px;text-transform:uppercase;letter-spacing:1.3px;margin:0}.answer-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:26px}.answer{overflow-wrap:anywhere}.answer p:first-child{margin-top:0}.answer p:last-child{margin-bottom:0}.answer pre,.source-code{background:var(--code);border:1px solid var(--line);border-radius:8px;overflow:auto;padding:16px;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:4}.answer code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);padding:2px 5px;border-radius:4px}.answer pre code{padding:0;background:none;font-size:12px}.citation{display:inline-block;border:0;border-radius:4px;color:var(--accent);background:var(--soft);text-decoration:none;font-size:11px;font-weight:700;padding:0 5px;margin:0 2px;vertical-align:baseline}.timings{border-top:1px solid var(--line);padding-top:14px;margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}.timings strong{color:var(--ink);font-weight:600}.source-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:10px;transition:border-color .25s,box-shadow .25s;scroll-margin-top:20px}.source-card.highlight{border-color:var(--accent);box-shadow:0 0 0 3px var(--soft)}.source-card summary{padding:17px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;list-style:none}.source-card summary::-webkit-details-marker{display:none}.source-number{color:var(--accent);font:600 12px monospace;padding-top:2px;min-width:25px}.source-main{flex:1;min-width:0}.path{font:600 12px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.symbol{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.source-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:11px}.badge{color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 5px}.chevron{font-size:14px;transition:transform .2s}.source-card[open] .chevron{transform:rotate(90deg)}.source-code{margin:0 17px 17px}.empty{border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center;color:var(--muted);font-size:13px}.footer{margin:36px 0;color:var(--muted);font-size:11px;text-align:center}@media(max-width:640px){.header-inner{padding:15px 18px;flex-wrap:wrap;gap:8px}.repo{width:100%;margin:0 0 0 43px;font-size:11px}main{margin:30px auto;padding:0 18px}.composer{padding:16px}.controls{gap:16px}.buttons{width:100%}.buttons .btn{flex:1}.answer-panel{padding:18px}.source-card summary{padding:14px}.source-meta{flex-wrap:wrap;justify-content:flex-end;max-width:75px}.source-code{margin:0 14px 14px}.toggles{gap:12px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .repository-dialog{width:min(560px,calc(100% - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #0003}.repository-dialog::backdrop{background:#10182888;backdrop-filter:blur(4px)}.dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.repository-dialog h2{font-size:19px;text-transform:none;letter-spacing:-.4px}.repository-dialog form{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}.repository-dialog label{width:100%}.repository-dialog input{flex:1;min-width:180px}.repository-dialog input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .answer h1,.answer h2,.answer h3,.answer h4,.answer h5,.answer h6{text-transform:none;letter-spacing:0;line-height:1.35;margin:1.3em 0 .6em}.answer h1{font-size:24px}.answer h2{font-size:20px}.answer h3{font-size:17px}.answer h4,.answer h5,.answer h6{font-size:15px}.answer li{margin:.35em 0}.answer li p{margin:.6em 0}.answer a:not(.citation){color:var(--accent);overflow-wrap:anywhere}
+.answer .table-scroll{overflow-x:auto;margin:1em 0;border:1px solid var(--line);border-radius:8px}.answer table{width:100%;border-collapse:collapse;font-size:13px}.answer th,.answer td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:left}.answer th{background:var(--soft);font-weight:650}.answer tbody tr:last-child td{border-bottom:0}
 </style>
 </head>
 <body>
@@ -199,6 +200,14 @@ function inline(parent, text, depth = 0) {
         i = end + size; continue;
       }
     }
+    if (text[i] === '【') {
+      const alternate = text.slice(i).match(/^【(\d+)(?:†(L\d+(?:[-–]L?\d+)?))?】/);
+      if (alternate) {
+        flush(); const node = element('span'); inline(node, '[' + alternate[1] + ']', depth + 1);
+        if (alternate[2]) node.setAttribute('title', alternate[2]);
+        parent.append(node); i += alternate[0].length; continue;
+      }
+    }
     if (text[i] === '[') {
       const linkMatch = text.slice(i).match(/^\[([^\]\n]+)\]\(([^)\n]+)\)/);
       if (linkMatch) {
@@ -226,6 +235,42 @@ function inline(parent, text, depth = 0) {
   }
   flush();
 }
+function tableCells(line) {
+  const cells = []; let cell = '', marker = '';
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\' && line[i + 1] === '|') {cell += '|'; i++; continue;}
+    if (line[i] === '`') {
+      const run = line.slice(i).match(/^`+/)[0];
+      if (!marker) marker = run; else if (marker === run) marker = '';
+      cell += run; i += run.length - 1; continue;
+    }
+    if (line[i] === '|' && !marker) {cells.push(cell.trim()); cell = '';}
+    else cell += line[i];
+  }
+  cells.push(cell.trim());
+  if (line.trim().startsWith('|')) cells.shift();
+  if (line.trim().endsWith('|')) cells.pop();
+  return cells;
+}
+function tableSeparator(cells) {return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell));}
+function expandedTableLines(line) {
+  // Some answers join complete, pipe-bordered rows instead of inserting newlines.
+  const rows = []; let start = 0, marker = '';
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\') {i++; continue;}
+    if (line[i] === '`') {
+      const run = line.slice(i).match(/^`+/)[0];
+      if (!marker) marker = run; else if (marker === run) marker = '';
+      i += run.length - 1; continue;
+    }
+    if (line[i] === '|' && !marker) {
+      const boundary = line.slice(i + 1).match(/^\s*\|/);
+      if (boundary) {rows.push(line.slice(start, i + 1)); start = i + boundary[0].length; i = start - 1;}
+    }
+  }
+  rows.push(line.slice(start));
+  return rows.length > 1 && tableSeparator(tableCells(rows[1])) ? rows : [line];
+}
 function markdown(text) {
   const fragment = document.createDocumentFragment(), lines = text.replace(/\r\n/g, '\n').split('\n');
   let paragraph = [], paragraphParent = fragment, code = null, codeParent = fragment, blank = false;
@@ -240,7 +285,8 @@ function markdown(text) {
     return lists.length ? lists[lists.length - 1].item : fragment;
   }
   function codeBlock() {const pre = element('pre'); pre.append(element('code', code.join('\n'))); codeParent.append(pre); code = null;}
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    let line = lines[lineIndex];
     const indent = line.match(/^\s*/)[0].replace(/\t/g, '    ').length;
     if (/^\s*```/.test(line)) {
       flush();
@@ -250,6 +296,29 @@ function markdown(text) {
     }
     if (code !== null) {code.push(line); continue;}
     if (!line.trim()) {flush(); blank = true; continue;}
+    const expanded = expandedTableLines(line);
+    if (expanded.length > 1) {lines.splice(lineIndex, 1, ...expanded); line = lines[lineIndex];}
+    const headers = tableCells(line), separators = tableCells(lines[lineIndex + 1] || '');
+    if (line.includes('|') && headers.length === separators.length && tableSeparator(separators)) {
+      flush(); const parent = container(indent), wrapper = element('div', undefined, 'table-scroll');
+      const table = element('table'), head = element('thead'), body = element('tbody');
+      function row(cells, tag, target) {
+        const tr = element('tr');
+        headers.forEach((_, column) => {
+          const cell = element(tag); inline(cell, cells[column] || '');
+          if (tag === 'th') cell.setAttribute('scope', 'col');
+          const alignment = separators[column];
+          if (alignment.startsWith(':') && alignment.endsWith(':')) cell.setAttribute('style', 'text-align:center');
+          else if (alignment.endsWith(':')) cell.setAttribute('style', 'text-align:right');
+          tr.append(cell);
+        }); target.append(tr);
+      }
+      row(headers, 'th', head); lineIndex++;
+      while (lineIndex + 1 < lines.length && lines[lineIndex + 1].trim() && lines[lineIndex + 1].includes('|')) {
+        row(tableCells(lines[++lineIndex]), 'td', body);
+      }
+      table.append(head, body); wrapper.append(table); parent.append(wrapper); blank = true; continue;
+    }
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
     if (heading) {
       flush(); const parent = container(indent), node = element('h' + heading[1].length);

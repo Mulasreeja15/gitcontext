@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,7 +17,7 @@ def render(sample):
     result = subprocess.run(
         [node, str(ROOT / 'tests/markdown_dom.cjs')],
         input=json.dumps({'renderer': element + renderer, 'sample': sample}),
-        text=True, capture_output=True, check=True,
+        text=True, encoding='utf-8', capture_output=True, check=True,
     )
     return json.loads(result.stdout)
 
@@ -81,3 +82,41 @@ def test_untrusted_html_and_unsafe_links_remain_text():
     assert not descendants(tree, 'a')
     assert '[bad](javascript:alert(1))' in tree['text']
     assert descendants(tree, 'code')[0]['text'] == '<script>alert(1)</script>'
+
+
+@pytest.mark.parametrize('separator', ['\n', ' ', ''])
+def test_tables_with_normal_or_single_line_rows(separator):
+    sample = separator.join([
+        '| Name | Value |', '| :--- | ---: |',
+        '| **Proxy** | `a|b` 【2†L1-L15】 |',
+        r'| escaped \| pipe | <img src=x onerror=alert(1)> |',
+    ])
+    tree = render(sample)
+    table = descendants(tree, 'table')[0]
+    assert [cell['text'] for cell in descendants(table, 'th')] == ['Name', 'Value']
+    cells = descendants(table, 'td')
+    assert [cell['text'] for cell in cells] == [
+        'Proxy', 'a|b [2]', 'escaped | pipe', '<img src=x onerror=alert(1)>',
+    ]
+    assert descendants(cells[0], 'strong')[0]['text'] == 'Proxy'
+    assert descendants(cells[1], 'code')[0]['text'] == 'a|b'
+    assert not descendants(table, 'img')
+    assert cells[1]['attrs']['style'] == 'text-align:right'
+
+
+def test_alternate_citations_normalized_with_tooltip_but_code_stays_literal():
+    tree = render('Shown 【2†L1-L15】 and 【3】, unknown 【99†L4】. `【2†L1-L15】` [1].')
+    links = descendants(tree, 'a')
+    assert [link['text'] for link in links] == ['[2]', '[3]', '[1]']
+    assert [link['href'] for link in links] == ['#source-2', '#source-3', '#source-1']
+    spans = descendants(tree, 'span')
+    assert spans[0]['attrs']['title'] == 'L1-L15'
+    assert '[99]' in tree['text']
+    assert descendants(tree, 'code')[0]['text'] == '【2†L1-L15】'
+
+
+def test_table_syntax_inside_fences_remains_code_and_empty_cells_work():
+    tree = render('```\n| A | B | |---|---| | x | y |\n```\n\n| A | B |\n|---|---|\n| | value |')
+    assert len(descendants(tree, 'table')) == 1
+    assert [cell['text'] for cell in descendants(tree, 'td')] == ['', 'value']
+    assert '|---|---|' in descendants(tree, 'code')[0]['text']
