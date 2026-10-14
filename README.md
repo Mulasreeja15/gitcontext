@@ -130,6 +130,53 @@ python -m venv .venv
 
 On Linux/macOS, activate with `source .venv/bin/activate` and use `.venv/bin/python`. The first index downloads the embedding model; reranking downloads MiniLM on first use. Search needs no API key. For answers or query rewriting, configure `GROQ_API_KEY` in your local `.env` (loaded by python-dotenv); never commit credentials. Optional PR import uses `GITHUB_TOKEN`.
 
+## Deploy to Hugging Face Spaces
+
+1. Create a new **public Space**, select **Docker → Blank**, and choose the free
+   **CPU Basic** hardware. Use the default port **7860**.
+2. Upload the project source: `Dockerfile`, `.dockerignore`, `requirements.txt`,
+   `main.py`, `evaluate.py`, `check_labels.py`, `judge.py`, and the `gitcontext/`
+   directory including `static/index.html`. Keep the normal source directory
+   structure. Do not upload credentials, `.env`, `.venv`, `data/`, or local caches.
+3. Copy the complete contents of [`docs/SPACE_README.md`](docs/SPACE_README.md)
+   into the Space's root `README.md`; its YAML header selects Docker and port 7860.
+   Do not use this portfolio README as the Space README.
+4. In **Settings → Variables and secrets**, add a **secret** named
+   `GROQ_API_KEY` with your Groq API key. It is read only from the runtime
+   environment. No build argument, Docker layer, or checked-in file needs a key.
+5. Commit the uploaded files. Spaces builds the image automatically. Watch the
+   build logs, then container logs: `[startup]` reports cloning, chunking,
+   embedding, requests history indexing, and readiness for both repositories.
+   The first start takes several minutes; no Groq calls occur during initialization.
+6. Open the **App** tab when startup finishes. Choose `psf/requests` or
+   `pallets/click`, try **Search only**, then **Ask**. For requests, switch to
+   **History** and ask about a change. `/health`, `/repos`, and `/settings` expose
+   readiness, available repositories, and public capabilities.
+
+The image runs as UID 1000 with writable `/home/user`, `/app/data`, and a model
+cache under the user's home. It pre-downloads embedding and reranking models;
+the container entry point builds missing indexes with a shared client/model,
+then closes storage before starting one API worker on `0.0.0.0:$PORT` (`7860`
+by default). Requests is cloned with full Git history; its last 500 commits are
+eligible for history chunks. Startup imports commits only, without GitHub or Groq
+API calls. Existing complete indexes are reused. Free Space storage is ephemeral,
+so indexes may rebuild after a restart; initialization failures appear in logs.
+
+`PUBLIC_DEMO=1` is the Docker default (off for local Python). It disables repository
+creation, deletion, and reindexing with HTTP 403, hides repository management in
+the UI, caps questions at 500 characters, and applies one shared five-request,
+60-second per-IP window to `/search`, `/ask`, and `/ask/stream`. HTTP 429 includes
+`Retry-After` and a friendly retry message. Limits are in `gitcontext/config.py`.
+The limiter is in-memory and requires one worker; restarts reset it. It uses the
+ASGI client address, so visitors sharing an IP share the quota. Behind a proxy,
+configure Uvicorn's `FORWARDED_ALLOW_IPS` only for trusted proxy addresses that
+sanitize forwarding headers; do not trust arbitrary client-supplied headers.
+These limits reduce usage but do not guarantee Groq quota availability.
+
+Docker setup, runtime secrets, UID 1000, and port configuration follow the
+[Hugging Face Docker Spaces documentation](https://huggingface.co/docs/hub/spaces-sdks-docker).
+Docker Compose keeps local repository management enabled and uses port 8000.
+
 ### Docker
 
 ```powershell

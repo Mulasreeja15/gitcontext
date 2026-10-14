@@ -4,7 +4,13 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()  # reads GROQ_API_KEY from the .env file
+PUBLIC_DEMO = os.getenv('PUBLIC_DEMO', '').lower() in {'1', 'true', 'yes', 'on'}
+if not PUBLIC_DEMO:
+    load_dotenv()  # local development only; hosted demos use environment secrets
+PUBLIC_MAX_QUERY_CHARS = 500
+PUBLIC_RATE_REQUESTS = 5
+PUBLIC_RATE_SECONDS = 60
+DEMO_REPOS = ('psf/requests', 'pallets/click')
 
 DATA_DIR = Path("./data")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -58,8 +64,8 @@ JUDGE_RESULTS_PATH = Path("eval/judge_results.md")
 JUDGE_K = 4
 JUDGE_MAX_SOURCE_CHARS = 1500
 JUDGE_MAX_GOLD_CHARS = 3000
-API_HOST = "127.0.0.1"
-API_PORT = 8000
+API_HOST = "0.0.0.0"
+API_PORT = int(os.getenv('PORT', '7860'))
 API_MAX_K = 20
 API_CLONE_TIMEOUT = 120
 API_EMBED_BATCH_SIZE = 16

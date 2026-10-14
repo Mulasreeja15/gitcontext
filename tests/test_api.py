@@ -38,6 +38,72 @@ def test_health_and_retriever_loaded_once(service):
     factory.assert_called_once()
 
 
+@pytest.mark.parametrize('method,path', [('post', '/index'), ('post', '/reindex'),
+                                        ('delete', '/repos/psf/requests')])
+def test_public_demo_blocks_mutations_before_validation(service, monkeypatch, method, path):
+    client, retriever, _ = service
+    from gitcontext import config
+    monkeypatch.setattr(config, 'PUBLIC_DEMO', True)
+    response = getattr(client, method)(path)
+    assert response.status_code == 403
+    assert 'disabled in the public demo' in response.json()['detail']
+    retriever.retrieve.assert_not_called()
+    assert client.get('/settings').json() == {'public_demo': True, 'max_query_chars': 500}
+    html = client.get('/').text
+    assert 'id="open-repository" hidden disabled' in html
+    assert 'id="index-button" hidden disabled' in html
+
+
+@pytest.mark.parametrize('path', ['/search', '/ask', '/ask/stream'])
+def test_public_demo_query_limit(service, monkeypatch, path):
+    client, retriever, _ = service
+    from gitcontext import config
+    monkeypatch.setattr(config, 'PUBLIC_DEMO', True)
+    assert client.post(path, json={'query': 'x' * 501}).status_code == 422
+    retriever.retrieve.assert_not_called()
+
+
+def test_public_rate_limit_shared_across_all_routes(service, monkeypatch):
+    client, retriever, _ = service
+    from gitcontext import config
+    monkeypatch.setattr(config, 'PUBLIC_DEMO', True)
+    for _ in range(5):
+        assert client.post('/search', json={'query': 'x' * 500}).status_code == 200
+    for path in ['/search', '/ask', '/ask/stream']:
+        response = client.post(path, json={'query': 'q'})
+        assert response.status_code == 429
+        assert response.headers['retry-after'] == '60'
+        assert response.json()['detail'] == 'Too many requests, try again in a minute.'
+    assert retriever.retrieve.call_count == 5
+
+
+def test_rate_limiter_clients_expiry_and_spoofed_headers(service, monkeypatch):
+    client, _, _ = service
+    from gitcontext import config
+    from gitcontext.api import PublicRateLimiter
+    monkeypatch.setattr(config, 'PUBLIC_DEMO', True)
+    monkeypatch.setattr(config, 'PUBLIC_RATE_REQUESTS', 1)
+    limiter = PublicRateLimiter()
+    assert limiter.allow('a', now=0)
+    assert not limiter.allow('a', now=59)
+    assert limiter.allow('b', now=59)
+    assert limiter.allow('a', now=60)
+    assert limiter.allow('c', now=120)
+    assert list(limiter.clients) == ['c']
+    assert client.post('/search', json={'query': 'q'}).status_code == 200
+    assert client.post('/search', json={'query': 'q'},
+                       headers={'X-Forwarded-For': 'fake-address'}).status_code == 429
+
+
+def test_local_mode_is_not_limited(service, monkeypatch):
+    client, _, _ = service
+    from gitcontext import config
+    monkeypatch.setattr(config, 'PUBLIC_DEMO', False)
+    monkeypatch.setattr(config, 'PUBLIC_RATE_REQUESTS', 1)
+    for _ in range(2):
+        assert client.post('/search', json={'query': 'x' * 501}).status_code == 200
+
+
 def test_search_defaults_and_metadata(service):
     client, retriever, _ = service
     response = client.post('/search', json={'query': ' question '})

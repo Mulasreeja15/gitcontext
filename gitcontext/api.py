@@ -10,6 +10,8 @@ from threading import Lock, RLock, Event, Thread
 import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from collections import deque
 from pydantic import BaseModel, Field, field_validator
 
 from . import answer, config
@@ -53,6 +55,8 @@ class SearchRequest(BaseModel):
         """Reject empty/whitespace queries before loading or querying services."""
         if not value.strip():
             raise ValueError('query must not be empty')
+        if config.PUBLIC_DEMO and len(value) > config.PUBLIC_MAX_QUERY_CHARS:
+            raise ValueError(f'Questions must be at most {config.PUBLIC_MAX_QUERY_CHARS} characters in the public demo.')
         return value.strip()
 
 
@@ -161,6 +165,7 @@ async def lifespan(app: FastAPI):
     app.state.status_lock = Lock()
     app.state.index_job = dict(state='idle', repo=None, progress='', error=None)
     app.state.index_thread = None
+    app.state.rate_limiter = PublicRateLimiter()
     try:
         yield
     finally:
@@ -171,6 +176,56 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title='GitContext', lifespan=lifespan)
+
+
+class PublicRateLimiter:
+    """Thread-safe sliding window shared by search and answer endpoints.
+
+    Expired clients are discarded to bound memory by recent active clients.
+    Client addresses come from ASGI, never arbitrary forwarded headers here.
+    """
+    def __init__(self):
+        self.clients = {}
+        self.lock = Lock()
+
+    def allow(self, client, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            cutoff = now - config.PUBLIC_RATE_SECONDS
+            for address in list(self.clients):
+                queue = self.clients[address]
+                while queue and queue[0] <= cutoff:
+                    queue.popleft()
+                if not queue:
+                    del self.clients[address]
+            queue = self.clients.setdefault(client, deque())
+            if len(queue) >= config.PUBLIC_RATE_REQUESTS:
+                return False
+            queue.append(now)
+            return True
+
+
+@app.middleware('http')
+async def public_demo_guard(request: Request, call_next):
+    """Reject public mutations before validation, threads, or model work."""
+    if config.PUBLIC_DEMO:
+        path, method = request.url.path, request.method
+        if ((method == 'POST' and path in {'/index', '/reindex'}) or
+                (method == 'DELETE' and path.startswith('/repos/'))):
+            return JSONResponse({'detail': 'Repository changes are disabled in the public demo.'}, status_code=403)
+        if method == 'POST' and path in {'/search', '/ask', '/ask/stream'}:
+            client = request.client.host if request.client else 'unknown'
+            if not request.app.state.rate_limiter.allow(client):
+                return JSONResponse({'detail': 'Too many requests, try again in a minute.'}, status_code=429,
+                                    headers={'Retry-After': str(config.PUBLIC_RATE_SECONDS)})
+    return await call_next(request)
+
+
+@app.get('/settings')
+def public_settings():
+    """Expose only safe UI capabilities, never environment variables or keys."""
+    return {'public_demo': config.PUBLIC_DEMO,
+            'max_query_chars': config.PUBLIC_MAX_QUERY_CHARS if config.PUBLIC_DEMO else None}
 
 
 class IndexRequest(BaseModel):
@@ -316,6 +371,12 @@ def delete_repo(owner: str, name: str, request: Request):
 @app.get('/', response_class=FileResponse)
 def home():
     """Serve the self-contained UI without a static-file server or build step."""
+    if config.PUBLIC_DEMO:
+        # Hide management before JavaScript fetches capabilities (no initial flash).
+        html = config.UI_PATH.read_text(encoding='utf-8')
+        for identity in ('open-repository', 'index-button'):
+            html = html.replace(f'id="{identity}"', f'id="{identity}" hidden disabled')
+        return HTMLResponse(html)
     return FileResponse(config.UI_PATH, media_type='text/html')
 
 

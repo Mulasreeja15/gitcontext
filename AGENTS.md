@@ -172,6 +172,16 @@ The README screenshot at docs/screenshot.png is explicitly a placeholder.
 
 ## Resilience and doctor
 
+Public deployment: `python -m gitcontext.deployment` provisions missing demo
+indexes for psf/requests and pallets/click, including requests commits (no LLM or
+GitHub API calls), then starts one server on 0.0.0.0 and PORT (default 7860).
+Docker uses non-root UID 1000 and PUBLIC_DEMO=1; local Python defaults off and
+Compose explicitly disables public mode. Public mode skips dotenv, restricts
+questions to 500 characters, blocks /index, /reindex and repository deletion,
+and shares a per-IP rate quota across search/ask/stream. Never bypass the guard
+or trust unvalidated forwarding headers. See docs/SPACE_README.md and the README
+deployment section; tests must mock bootstrapping to avoid clones/models/network.
+
 All owned Qdrant connections must use gitcontext.database.open_client(); injected
 clients stay shared. Local locks become DatabaseLocked with stop-server guidance;
 evaluation scripts use run_cli to suppress only this known failure. QDRANT_URL

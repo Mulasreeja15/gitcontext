@@ -9,6 +9,7 @@ services:
     env_file:
       - .env
     environment:
+      PUBLIC_DEMO: "0"
       QDRANT_URL: ${QDRANT_URL:-}
   qdrant:
     image: qdrant/qdrant:latest

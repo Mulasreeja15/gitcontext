@@ -51,6 +51,7 @@
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
+let publicDemo = false;
 let busy = false, answerText = '', sourceCount = 0, scheduled = false;
 function savedRepository() {
   try {return localStorage.getItem('gitcontext.selectedRepo') || '';}
@@ -68,7 +69,7 @@ function updateButtons() {
   const disabled = busy || !selectedRepo || (indexing() && indexJob.repo === selectedRepo);
   $('ask-button').disabled = disabled; $('search-button').disabled = disabled;
   $('repo-picker').disabled = busy;
-  $('index-button').disabled = indexing();
+  $('index-button').disabled = publicDemo || indexing();
   $('index-badge').hidden = !indexing();
   $('index-badge').textContent = indexing() ? indexJob.state + (indexJob.progress ? ' · ' + indexJob.progress : '…') : '';
 }
@@ -390,6 +391,12 @@ function sources(hits) {
 }
 async function health() {
   try {
+    const settings = await (await checked(await fetch('/settings'))).json();
+    publicDemo = settings.public_demo;
+    $('open-repository').hidden = settings.public_demo;
+    $('open-repository').disabled = settings.public_demo;
+    $('index-button').disabled = settings.public_demo;
+    if (settings.max_query_chars) $('query').maxLength = settings.max_query_chars;
     await loadRepos();
     if (!selectedRepo) status(emptyMessage, false, true);
   } catch (error) {status('Cannot reach GitContext. Check that the server is running.', false, true);}
@@ -398,7 +405,7 @@ async function checked(response) {
   if (response.ok) return response;
   let detail = ''; try {detail = (await response.json()).detail || '';} catch (_) {}
   if (Array.isArray(detail)) detail = detail.map(item => item.msg).join('; ');
-  if (response.status === 429) throw new Error('Groq is rate limiting, retrying... Please try again shortly.');
+  if (response.status === 429) throw new Error(detail || 'Too many requests, try again in a minute.');
   if (typeof detail === 'string' && detail.toLowerCase().includes('index is empty')) throw new Error(emptyMessage);
   throw new Error(typeof detail === 'string' && detail ? detail : 'Request failed (' + response.status + '). Please try again.');
 }
