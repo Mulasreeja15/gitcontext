@@ -16,9 +16,13 @@ GitContext is a portfolio RAG project that measures retrieval choices instead of
 
 ## Demo
 
-![GitContext screenshot placeholder](docs/screenshot.png)
+![GitContext web UI with a cited answer](docs/screenshot.png)
 
-[Demo video — coming soon](#demo). The screenshot is a placeholder; replace it with a captured UI and add the recording link here.
+![GitContext source cards with exact code and provenance](docs/sources.png)
+
+Every answer cites the exact code it used, with file, lines and last change.
+
+[Demo video — coming soon](#demo).
 
 ## Results
 

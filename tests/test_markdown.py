@@ -115,6 +115,22 @@ def test_alternate_citations_normalized_with_tooltip_but_code_stays_literal():
     assert descendants(tree, 'code')[0]['text'] == '【2†L1-L15】'
 
 
+@pytest.mark.parametrize('citation', [
+    '【2】', '【2†L1-L15】', '【2†source】', '【2†lines 1–15】',
+    '【2†】', '【2†<img src=x onerror=alert(1)>】',
+])
+def test_all_alternate_citation_suffixes_become_clickable(citation):
+    tree = render(f'Claim {citation}. **Another {citation}**.')
+    links = descendants(tree, 'a')
+    assert [link['text'] for link in links] == ['[2]', '[2]']
+    assert [link['href'] for link in links] == ['#source-2', '#source-2']
+    assert all(link['attrs']['aria-label'] == 'Go to source 2' for link in links)
+    assert '【' not in tree['text']
+    assert not descendants(tree, 'img')
+    if '†' in citation and citation.split('†', 1)[1][:-1]:
+        assert descendants(tree, 'span')[0]['attrs']['title'] == citation.split('†', 1)[1][:-1]
+
+
 def test_table_syntax_inside_fences_remains_code_and_empty_cells_work():
     tree = render('```\n| A | B | |---|---| | x | y |\n```\n\n| A | B |\n|---|---|\n| | value |')
     assert len(descendants(tree, 'table')) == 1

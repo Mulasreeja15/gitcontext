@@ -201,7 +201,7 @@ function inline(parent, text, depth = 0) {
       }
     }
     if (text[i] === '【') {
-      const alternate = text.slice(i).match(/^【(\d+)(?:†(L\d+(?:[-–]L?\d+)?))?】/);
+      const alternate = text.slice(i).match(/^【(\d+)(?:†([^】]*))?】/);
       if (alternate) {
         flush(); const node = element('span'); inline(node, '[' + alternate[1] + ']', depth + 1);
         if (alternate[2]) node.setAttribute('title', alternate[2]);
