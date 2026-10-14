@@ -22,8 +22,6 @@ GitContext is a portfolio RAG project that measures retrieval choices instead of
 
 Every answer cites the exact code it used, with file, lines and last change.
 
-[Demo video — coming soon](#demo).
-
 ## Results
 
 Evaluated on the [`psf/requests`](https://github.com/psf/requests) library with **45 labelled questions**: exact identifiers, technical questions, and plain-English questions written the way a developer new to the codebase would ask them.
