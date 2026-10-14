@@ -172,6 +172,15 @@ The README screenshot at docs/screenshot.png is explicitly a placeholder.
 
 ## Resilience and doctor
 
+Gradio Space entry point: `python app.py` defaults PUBLIC_DEMO=1, disables dotenv,
+and selects CPU models. `build_app(start_indexing=False)` is safe for tests; normal
+lifespan starts demo indexing in a background thread. Keep `/` and API routes
+before Gradio defaults, and preserve the `/gradio` mount and startup-events route.
+Readiness blocks retrieval until indexing and the single persistent retriever are
+ready. Do not add fake GPU usage to satisfy hosting checks. Gradio/spaces pins must
+match docs/SPACE_README.md; a static GitHub Pages showcase is the fallback if
+ZeroGPU refuses a CPU-only app. Never claim a live deployment without uploading.
+
 Public deployment: `python -m gitcontext.deployment` provisions missing demo
 indexes for psf/requests and pallets/click, including requests commits (no LLM or
 GitHub API calls), then starts one server on 0.0.0.0 and PORT (default 7860).

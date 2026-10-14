@@ -397,6 +397,12 @@ async function health() {
     $('open-repository').disabled = settings.public_demo;
     $('index-button').disabled = settings.public_demo;
     if (settings.max_query_chars) $('query').maxLength = settings.max_query_chars;
+    const readiness = await (await checked(await fetch('/health'))).json();
+    if (readiness.status === 'indexing' || readiness.status === 'error') {
+      selectedRepo = ''; updateButtons();
+      status(readiness.status === 'error' ? 'Initialization failed. Check the Space logs.' : 'Indexing, ready in a few minutes', readiness.status === 'indexing', readiness.status === 'error');
+      return;
+    }
     await loadRepos();
     if (!selectedRepo) status(emptyMessage, false, true);
   } catch (error) {status('Cannot reach GitContext. Check that the server is running.', false, true);}

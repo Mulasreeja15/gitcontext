@@ -426,6 +426,9 @@ def _answer_timings(timings: dict, started: float) -> dict[str, float]:
 @app.get('/health', response_model=HealthResponse)
 def health(request: Request, repo: str | None = None):
     """Report readiness and count without scanning every payload."""
+    startup = getattr(request.app.state, 'startup', None)
+    if startup and startup['state'] != 'ready':
+        return HealthResponse(status=startup['state'], chunks_indexed=0, stale=False)
     with request.app.state.retrieval_lock:
         try:
             identity = repo_id(repo or config.DEFAULT_REPO)

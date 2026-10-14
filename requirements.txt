@@ -1,3 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.12.1+cpu; sys_platform == "linux"
+torch>=2.8; sys_platform != "linux"
+gradio==6.9.0
+spaces==0.51.3
 tree-sitter>=0.23
 tree-sitter-python>=0.23
 sentence-transformers>=3.0

@@ -130,7 +130,8 @@ class Retriever:
         if self._reranker is None:
             from sentence_transformers import CrossEncoder
             print(f"Loading reranker {config.RERANK_MODEL} ...")
-            self._reranker = CrossEncoder(config.RERANK_MODEL, max_length=config.RERANK_MAX_TOKENS)
+            self._reranker = CrossEncoder(config.RERANK_MODEL, max_length=config.RERANK_MAX_TOKENS,
+                                          device=config.MODEL_DEVICE)
 
     # ---------- individual retrievers ----------
 

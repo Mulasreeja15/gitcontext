@@ -42,6 +42,7 @@ HISTORY_FETCH_TIMEOUT = 120
 
 # Embeddings (local, free)
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+MODEL_DEVICE = os.getenv('GITCONTEXT_DEVICE') or None  # Space entry point forces CPU
 EMBED_MAX_TOKENS = 512
 
 # Reranker (local, free): a cross-encoder that reads query + code together

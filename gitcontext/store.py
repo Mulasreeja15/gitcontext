@@ -16,7 +16,7 @@ class Embedder:
     def __init__(self):
         from sentence_transformers import SentenceTransformer
         print(f"Loading embedding model {config.EMBED_MODEL} ...")
-        self.model = SentenceTransformer(config.EMBED_MODEL)
+        self.model = SentenceTransformer(config.EMBED_MODEL, device=config.MODEL_DEVICE)
         self.model.max_seq_length = config.EMBED_MAX_TOKENS
         get_dim = (getattr(self.model, "get_embedding_dimension", None)
                    or self.model.get_sentence_embedding_dimension)
