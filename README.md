@@ -130,65 +130,6 @@ python -m venv .venv
 
 On Linux/macOS, activate with `source .venv/bin/activate` and use `.venv/bin/python`. The first index downloads the embedding model; reranking downloads MiniLM on first use. Search needs no API key. For answers or query rewriting, configure `GROQ_API_KEY` in your local `.env` (loaded by python-dotenv); never commit credentials. Optional PR import uses `GITHUB_TOKEN`.
 
-## Deploy to Hugging Face Spaces
-
-Target Space: [mulasreeja/gitcontext](https://huggingface.co/spaces/mulasreeja/gitcontext).
-This route uses the **Gradio SDK and ZeroGPU hardware**, with GitContext itself
-running entirely on CPU. Docker is still available for local deployment.
-
-1. Open the Space's **Settings** and select **ZeroGPU** hardware. If creating it
-   instead, choose **Gradio**, public visibility, and the ZeroGPU option available
-   to your eligible personal account. CPU Basic/Docker compute now requires a paid
-   plan; do not select those expecting a free deployment.
-2. Under **Files**, upload root `app.py`, `requirements.txt`, `packages.txt`,
-   `main.py`, `evaluate.py`, `check_labels.py`, `judge.py`, and the entire
-   `gitcontext/` directory (including `static/index.html`). Preserve the paths.
-   Do not upload `.env`, API keys, `.venv`, `data/`, or local model caches.
-3. Replace the Space's root `README.md` with the complete contents of
-   [`docs/SPACE_README.md`](docs/SPACE_README.md). The YAML pins `sdk: gradio`,
-   `sdk_version: 6.9.0`, `app_file: app.py`, and Python 3.12. The portfolio README
-   stays in GitHub; do not use it as the Space README.
-4. Under **Settings → Variables and secrets**, add `GROQ_API_KEY` as a **secret**.
-   No build arguments or credential files are needed. Leave `PUBLIC_DEMO`
-   unset (the entry point defaults it to 1). The default listener is
-   `0.0.0.0:7860`, overridable through `PORT`.
-5. Commit the uploads. Watch build/runtime logs while dependencies install, then
-   open the **App** tab. The original web UI appears immediately at `/`, displaying
-   **Indexing, ready in a few minutes** while a background thread downloads the
-   embedding model and builds both repositories. `/health` reports `indexing`,
-   `ready` via normal `ok` health after completion, or `error` on failure. Logs
-   show `[startup]` progress. The small Gradio panel is at `/gradio`.
-6. Once ready, choose `psf/requests` or `pallets/click`, try **Search only**, then
-   **Ask**. Switch requests to **History** for commit questions. Requests is cloned
-   with full history; the latest 500 eligible commits are indexed. No Groq or
-   GitHub API calls are made during startup. Ephemeral storage may rebuild after
-   restart. Do not run multiple workers against the local Qdrant directory.
-
-`app.py` launches through `Blocks.launch(app_kwargs=...)`, preserving the existing
-FastAPI routes/middleware/lifespan and the supported `mount_gradio_app` panel at
-`/gradio`. Initialization runs outside the request loop and closes its database
-client before the API opens its one persistent client. Search/answer calls receive
-503 until initialization completes; model loading and embeddings use CPU. The
-pinned Gradio/spaces versions are in `requirements.txt`, which also selects the
-CPU-only Linux PyTorch wheel. Local CLI/API commands still work as before.
-
-Public mode hides repository management, blocks creation/deletion/reindexing with
-403, caps questions at 500 characters, and shares five search/answer requests per
-IP per minute (429 with Retry-After). The in-memory limiter uses the ASGI client
-address. Configure `FORWARDED_ALLOW_IPS` only for trusted proxies that sanitize
-headers; clients sharing an IP share a quota. The Groq free tier can still limit
-answers; Search only needs no Groq key.
-
-**ZeroGPU acceptance is not guaranteed for a CPU-only app.** No GPU workload is
-needed, so no `@spaces.GPU` no-op is added. If the platform rejects a non-GPU app,
-the honest fallback is a **static showcase on GitHub Pages** with screenshots,
-results and a source-code link. Static hosting cannot run embeddings, FastAPI,
-or live answers; never put the Groq key in browser JavaScript. This repository
-has not been published to the Space by these code changes.
-
-See the official [ZeroGPU requirements](https://huggingface.co/docs/hub/spaces-zerogpu)
-and [Gradio mounting documentation](https://www.gradio.app/docs/gradio/mount_gradio_app).
-
 ### Docker
 
 ```powershell
